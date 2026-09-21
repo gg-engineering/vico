@@ -23,6 +23,7 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimension
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.half
 import com.patrykandpatrick.vico.compose.common.roundedToNearest
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -49,13 +50,29 @@ private fun CartesianDrawingContext.getLabelValues(
   val values = mutableListOf<Double>()
   var multiplier = -LABEL_OVERFLOW_SIZE
   var hasEndOverflow = false
+  // The visible range is treated as half-open: a value landing exactly on its end belongs to the
+  // next window, not this one.
+  //
+  // A window that is meant to hold n labels has to span n intervals, because the data it contains
+  // runs to the end of the last one — a seven-day week covers Sunday 00:00 up to the next Sunday
+  // 00:00, and shortening it to six intervals would drop Saturday's own readings. But n intervals
+  // have n + 1 boundaries, so the closing boundary sat inside the window and drew an n + 1'th
+  // label: the stray partial day at the trailing edge, with no guideline beside it because
+  // guidelines are clipped to the layer bounds. Excluding it makes visibleLabelsCount mean what
+  // its name says, so asking for seven gives seven rather than needing to be tuned below a whole
+  // step to suppress the extra one.
+  //
+  // Only an exact coincidence is dropped, which is the settled state after a snap. Mid-scroll no
+  // boundary sits on the end, so labels still slide in and out continuously rather than popping.
+  val endEpsilon = ranges.xStep / 1000
   while (true) {
     var potentialValue = firstValue + multiplier++ * spacing * ranges.xStep
     potentialValue =
       ranges.xStep * ((potentialValue - minXOffset) / ranges.xStep).roundedToNearest + minXOffset
     if (potentialValue < ranges.minX) continue
     if (potentialValue > ranges.maxX) break
-    values += potentialValue
+    val closesTheWindow = abs(potentialValue - visibleXRange.endInclusive) < endEpsilon
+    if (!closesTheWindow) values += potentialValue
     if (
       potentialValue > visibleXRange.endInclusive && hasEndOverflow.also { hasEndOverflow = true }
     ) {
@@ -182,11 +199,16 @@ internal class SegmentedHorizontalAxisItemPlacer(private val shiftExtremeLines: 
       val firstValue = visibleXRange.start + (ranges.xStep - remainder) % ranges.xStep
       var multiplier = -SEGMENTED_TICK_OVERFLOW_SIZE
       val values = mutableListOf<Double>()
+      // Half-open at the end, matching the labels: the boundary that closes the window belongs to
+      // the next one. Without this the guideline for it was still drawn and showed as a sliver at
+      // the trailing edge — the next period's opening line peeking into this period — because the
+      // loop adds a value before testing whether it has passed the end.
+      val endEpsilon = ranges.xStep / 1000
       while (true) {
         val potentialValue = firstValue + multiplier++ * ranges.xStep
         if (potentialValue < ranges.minX - ranges.xStep.half) continue
         if (potentialValue > ranges.maxX + ranges.xStep.half) break
-        values += potentialValue
+        if (abs(potentialValue - visibleXRange.endInclusive) >= endEpsilon) values += potentialValue
         if (potentialValue > visibleXRange.endInclusive) break
       }
       values

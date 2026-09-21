@@ -49,6 +49,9 @@ import kotlin.math.min
  * @property itemPlacer determines for what _x_ values the [HorizontalAxis] displays labels, ticks,
  *   and guidelines.
  */
+/** A stroke's worth of tolerance, so a separator on the closing edge is not drawn. */
+private const val SEPARATOR_EDGE_EPSILON_PX = 1f
+
 public open class HorizontalAxis<P : Axis.Position.Horizontal>
 protected constructor(
   override val position: P,
@@ -179,10 +182,19 @@ protected constructor(
         itemPlacer.getEndLayerMargin(this, layerDimensions, tickThickness, maxLabelWidth),
         maxLabelWidth.half,
       )
+      // Labels are held to the same horizontal bounds as their guidelines, so one at the edge is
+      // cut where the plot is cut rather than spilling past it.
+      //
+      // The margins are still allowed vertically and are still what the layer reserves, but using
+      // them horizontally let a label overhang the layer by half its width. Guidelines get no such
+      // allowance — drawGuidelines clips strictly to layerBounds — so a boundary at the edge drew
+      // a readable label with no line beneath it. Clipping both the same way keeps them in step,
+      // and a label sliding in under a scroll is revealed progressively rather than appearing
+      // whole once its centre crosses over.
       canvas.clipRect(
-        bounds.left - startMargin,
+        maxOf(bounds.left - startMargin, layerBounds.left),
         min(bounds.top, layerBounds.top),
-        bounds.right + endMargin,
+        minOf(bounds.right + endMargin, layerBounds.right),
         max(bounds.bottom, layerBounds.bottom),
       )
 
@@ -249,11 +261,20 @@ protected constructor(
     val sep = separators ?: return
     if (sep.values.isEmpty()) return
     with(context) {
+      // The trailing edge is exclusive, as it is for labels and guidelines: a separator marking the
+      // start of the next period does not belong to this one.
+      //
+      // It was inclusive, and separators are drawn with no clip, so one landing exactly on the edge
+      // drew the outer half of its stroke past the plot — a sliver of the next period's opening
+      // marker peeking in. A hairline of tolerance keeps a boundary that rounds fractionally inside
+      // from slipping through.
       sep.values.forEach { x ->
         val canvasX = baseCanvasX +
           ((x - ranges.minX) / ranges.xStep).toFloat() *
           layerDimensions.xSpacing * layoutDirectionMultiplier
-        if (canvasX < layerBounds.left || canvasX > layerBounds.right) return@forEach
+        if (canvasX < layerBounds.left || canvasX >= layerBounds.right - SEPARATOR_EDGE_EPSILON_PX) {
+          return@forEach
+        }
         sep.line.drawVertical(context, canvasX, layerBounds.top, layerBounds.bottom)
       }
     }
