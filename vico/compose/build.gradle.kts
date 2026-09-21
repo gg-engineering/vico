@@ -92,7 +92,7 @@ publishing {
   repositories {
     maven {
       name = "GitHubPackages"
-      url = uri("https://maven.pkg.github.com/dmdbrands/vico")
+      url = uri("https://maven.pkg.github.com/gg-engineering/vico")
       credentials {
         username = localProps.getProperty("gpr.user") as String?
           ?: project.findProperty("gpr.user") as String?
