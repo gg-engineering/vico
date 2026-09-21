@@ -42,7 +42,6 @@ import kotlin.math.abs
  */
 public data class SnapBehaviorConfig(
   val snapToLabel: ((currentXLabel: Double?, projectedXLabel: Double?, isDrag: Boolean, isForward: Boolean) -> Double)? = null,
-  val scrollPaddingXStep: Double = 0.0,
   val animation: SnapAnimation = SnapAnimation(),
 ) {
   public data class SnapAnimation(
@@ -88,11 +87,7 @@ internal class ChartSnapFlingBehavior(
     }
 
     val targetDataX = snapToLabel(currentX, projectedX, isDrag, isForward)
-    val targetPixels = if (config.scrollPaddingXStep > 0.0) {
-      scrollState.xToScrollValueWithPadding(targetDataX, config.scrollPaddingXStep)
-    } else {
-      scrollState.xToScrollValue(targetDataX)
-    } ?: return initialVelocity
+    val targetPixels = scrollState.xToScrollValueBehindStartInset(targetDataX) ?: return initialVelocity
     val clampedTarget = targetPixels.coerceIn(0f, scrollState.maxValue)
     val delta = clampedTarget - scrollState.value
 

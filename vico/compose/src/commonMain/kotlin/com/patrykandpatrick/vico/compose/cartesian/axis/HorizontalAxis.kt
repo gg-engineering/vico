@@ -39,6 +39,7 @@ import com.patrykandpatrick.vico.compose.common.component.LineComponent
 import com.patrykandpatrick.vico.compose.common.component.TextComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.ceil
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -423,6 +424,18 @@ protected constructor(
       }
     }
 
+  /**
+   * Whether [x] is where the chart starts or ends.
+   *
+   * Compared with a tolerance rather than for equality: a label value is rebuilt by rounding to
+   * the nearest step before it is used, so the one at the first entry is not bit-identical to
+   * ranges.minX and an exact test passes straight over it.
+   */
+  private fun CartesianDrawingContext.isChartEdge(x: Double): Boolean {
+    val tolerance = ranges.xStep / 1000
+    return abs(x - ranges.minX) < tolerance || abs(x - ranges.maxX) < tolerance
+  }
+
   protected open fun drawGuidelines(
     context: CartesianDrawingContext,
     baseCanvasX: Float,
@@ -435,6 +448,14 @@ protected constructor(
       canvas.save()
       canvas.clipRect(layerBounds)
 
+      // No guideline where the chart starts or ends: the axis line already marks those edges, and
+      // a guideline on top of it is just a second line in the same place.
+      //
+      // The fullXRange test used to cover this on its own — that range began at the first entry,
+      // so the entry was a bound and its guideline was suppressed. Reserving space before the
+      // first entry moved the range's start earlier, which left the entry no longer a bound and
+      // brought its guideline back. Testing the data's own range as well says what was always
+      // meant. (MOB-2953)
       if (lineValues == null) {
         labelValues.forEach { x ->
           val canvasX =
@@ -444,7 +465,7 @@ protected constructor(
                 layoutDirectionMultiplier
 
           guideline
-            .takeUnless { x.isBoundOf(fullXRange) }
+            .takeUnless { x.isBoundOf(fullXRange) || isChartEdge(x) }
             ?.drawVertical(this, canvasX, layerBounds.top, layerBounds.bottom)
         }
       } else {
@@ -457,7 +478,7 @@ protected constructor(
               getLinesCorrectionX(x, fullXRange)
 
           guideline
-            .takeUnless { x.isBoundOf(fullXRange) }
+            .takeUnless { x.isBoundOf(fullXRange) || isChartEdge(x) }
             ?.drawVertical(this, canvasX, layerBounds.top, layerBounds.bottom)
         }
       }

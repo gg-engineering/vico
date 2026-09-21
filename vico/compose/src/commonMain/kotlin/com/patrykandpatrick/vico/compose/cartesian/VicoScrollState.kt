@@ -86,12 +86,19 @@ public class VicoScrollState {
     }
 
   /** Like [xToScrollValue] but subtracts [paddingXStep] * xSpacing — positions X at padding offset from edge. */
-  internal fun xToScrollValueWithPadding(x: Double, paddingXStep: Double): Float? {
+  /**
+   * The scroll value that puts [x] at the start of the visible window, behind the space the layer
+   * reserves before its first entry.
+   *
+   * That space is [CartesianLayerDimensions.startPadding], which the chart sets from its own
+   * startInsetXStep, so there is nothing for a caller to pass: adding it and taking the same
+   * amount off again leaves the offset alone. Being told it separately only made it possible to
+   * be told a different figure from the one the chart reserved. (MOB-2953)
+   */
+  internal fun xToScrollValueBehindStartInset(x: Double): Float? {
     val ctx = context ?: return null
     val dims = layerDimensions ?: return null
-    return dims.startPadding +
-      ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing -
-      (paddingXStep * dims.xSpacing).toFloat()
+    return ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
   }
 
   /** Converts a scroll pixel value to a data X value. Uses current scroll if [scrollPixels] is null. */
