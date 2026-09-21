@@ -43,6 +43,9 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+/** A stroke's worth of tolerance, so a separator on the closing edge is not drawn. */
+private const val SEPARATOR_EDGE_EPSILON_PX = 1f
+
 /**
  * Draws horizontal axes. See the [BaseAxis] documentation for descriptions of the inherited
  * properties.
@@ -50,9 +53,6 @@ import kotlin.math.min
  * @property itemPlacer determines for what _x_ values the [HorizontalAxis] displays labels, ticks,
  *   and guidelines.
  */
-/** A stroke's worth of tolerance, so a separator on the closing edge is not drawn. */
-private const val SEPARATOR_EDGE_EPSILON_PX = 1f
-
 public open class HorizontalAxis<P : Axis.Position.Horizontal>
 protected constructor(
   override val position: P,

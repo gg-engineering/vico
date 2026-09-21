@@ -326,54 +326,86 @@ internal constructor(
   internal fun draw(context: CartesianDrawingContext) {
     drawingContext = context
     with(context) {
-      // Nothing is painted in the reserved strip before the first entry.
+      // Nothing is painted in the strip reserved before the first entry.
       //
-      // Held around the whole of this method, not around the layers alone: the line and points go
-      // through layerBitmap, but the guidelines, separators, ticks and axis lines are drawn
-      // straight onto the canvas by axisManager and the decorations, before and after it. Clipping
-      // only the bitmap left all of those painting into the strip.
+      // Held around each group that describes the data rather than around the method: the line and
+      // points go through layerBitmap, while the guidelines, separators, ticks and axis lines are
+      // drawn straight onto the canvas before and after it, so clipping the bitmap alone left all
+      // of those painting into the strip.
       //
-      // The space itself is untouched — the layer keeps its width and the chart is measured
-      // against the same bounds as ever. This governs what is visible there, nothing else. Once
-      // scrolled past, the strip sits behind the layer's left edge and none of this applies.
-      // (MOB-2953)
+      // What it is deliberately NOT held around is the layers, the marker or the legend. The layers
+      // draw from the first entry onwards, so they put nothing in the strip to begin with. A marker
+      // is an overlay on a point the user picked, and a picked point is inside the chart already.
+      // Both sit on the strip's edge at the first entry and reach back over it — the point by its
+      // radius, the marker by its bubble — so clipping them cut each in half, and on a chart that
+      // does not scroll the clip is on permanently and the marker never appeared at all.
+      //
+      // The space itself is untouched. The layer keeps its width and the chart is measured against
+      // the same bounds as ever; this governs only what is visible there. Once scrolled past, the
+      // strip is behind the layer's left edge and none of it applies. (MOB-2953)
       val contentStart = layerBounds.left + layerDimensions.startPadding - scroll
       val hidesStrip = startInsetXStep > 0 && contentStart > layerBounds.left
-      if (hidesStrip) {
+
+      fun clippedToChart(block: () -> Unit) {
+        if (!hidesStrip) {
+          block()
+          return
+        }
         canvas.save()
         canvas.clipRect(contentStart, 0f, canvasSize.width, canvasSize.height)
+        block()
+        canvas.restore()
       }
+
       if (fadingEdges != null) canvas.saveLayer(Rect(Offset.Zero, canvasSize), EmptyPaint)
-      decorations.forEach { it.drawUnderLayers(context) }
-      axisManager.drawUnderLayers(context)
+
+      // Stacking, bottom to top: guidelines, separators, axis, marker, point.
+      //
+      // The data goes on top of the furniture that describes it. The layers used to be composited
+      // before the axes' over-layer pass and before the marker, so an axis line and a marker drew
+      // over the very point they refer to.
+      clippedToChart {
+        decorations.forEach { it.drawUnderLayers(context) }
+        axisManager.drawUnderLayers(context)
+      }
+      // The start axis's line marks where the chart begins, so it belongs in the strip the rest was
+      // kept out of.
+      if (hidesStrip) axisManager.drawStartAxisLine(context)
+      clippedToChart {
+        axisManager.drawOverLayers(context)
+        decorations.forEach { it.drawOverLayers(context) }
+      }
+
       val (layerBitmap, layerCanvas) = getBitmap(cacheKeyNamespace)
       withCanvas(layerCanvas) {
         model.forEachWithLayer(drawingConsumer.apply { this.context = context })
       }
       // TreeMap keeps _markerTargets sorted by key — no per-frame sort needed
-      forEachPersistentMarker { marker, targets -> marker.drawUnderLayers(context, targets) }
+      clippedToChart {
+        forEachPersistentMarker { marker, targets ->
+          marker.drawUnderLayers(context, targets)
+          marker.drawOverLayers(context, targets)
+        }
+      }
       val markerTargets = getMarkerTargets(markerX, markerSeriesIndex).ifEmpty {
         // If markerX doesn't match a data point, synthesize an interpolated target
         markerX?.let { synthesizeInterpolatedTargets(context, it) } ?: emptyList()
       }
       val drawMarker = markerTargets.isNotEmpty()
-      if (drawMarker) marker?.drawUnderLayers(context, markerTargets)
+      if (drawMarker) {
+        marker?.drawUnderLayers(context, markerTargets)
+        marker?.drawOverLayers(context, markerTargets)
+      }
+      // Last, and not clipped. The layers draw from the first entry onwards, so they put nothing in
+      // the strip — and the strip ends exactly on that entry, so clipping only sliced its point in
+      // half. Composited inside the fading-edge layer so the fade still reaches them.
       canvas.drawImage(layerBitmap, Offset.Zero, EmptyPaint)
       fadingEdges?.run {
         draw(context)
         canvas.restore()
       }
-      axisManager.drawOverLayers(context)
-      decorations.forEach { it.drawOverLayers(context) }
-      forEachPersistentMarker { marker, targets -> marker.drawOverLayers(context, targets) }
       legend?.draw(context)
       if (drawMarker) marker?.drawOverLayers(context, markerTargets)
-      if (hidesStrip) {
-        canvas.restore()
-        // Only the start axis's line follows, outside the clip: it marks where the chart begins,
-        // so it is the one thing that still belongs there.
-        axisManager.drawStartAxisLine(context)
-      }
     }
     drawingContext = null
   }
