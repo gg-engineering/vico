@@ -291,6 +291,43 @@ protected constructor(
     }
   }
 
+  /**
+   * Draws the axis line and its ticks alone, without the guidelines or labels.
+   *
+   * A chart scrolls without end, and a start and end are imposed on it by not drawing beyond them.
+   * The line is the exception: it is what marks where the chart begins, so it is drawn whether or
+   * not it falls inside. The guidelines and labels are not — they describe the data, so they stop
+   * where the data does. (MOB-2953)
+   */
+  internal fun drawLineOnly(context: CartesianDrawingContext) {
+    with(context) {
+      val line = line ?: return
+      line.drawVertical(context, chartEdgeX(), layerBounds.top, layerBounds.bottom)
+    }
+  }
+
+  /**
+   * Where this axis's line belongs: the point the chart starts or ends at.
+   *
+   * Not the axis's own bounds, which is the gutter it reserves. An axis that reserves nothing has
+   * zero-width bounds against the canvas edge, and the line was landing there with half of it
+   * off-screen. The chart's start is its first entry — the layer's left edge plus the padding
+   * reserved before it — and it moves with the scroll. (MOB-2953)
+   */
+  private fun CartesianDrawingContext.chartEdgeX(): Float {
+    val firstEntryX = layerBounds.left + layerDimensions.startPadding - scroll
+    return if (position.isLeft(this)) {
+      firstEntryX
+    } else {
+      // Symmetric with the start: the last entry's position, plus whatever is reserved after it.
+      // This was pinned to layerBounds.right, so the end line showed against the right edge
+      // wherever the scroll happened to be — marking an end that was not there.
+      val contentWidth =
+        ((ranges.maxX - ranges.minX) / ranges.xStep).toFloat() * layerDimensions.xSpacing
+      firstEntryX + contentWidth + layerDimensions.endPadding
+    }
+  }
+
   private fun drawLineAndTicks(context: CartesianDrawingContext) {
     with(context) {
       val topExtension = if (itemPlacer.getShiftTopLines(this)) tickThickness else 0f
@@ -301,11 +338,7 @@ protected constructor(
         if (position.isLeft(this)) -scroll else getMaxScrollDistance() - scroll
       } else 0f
 
-      val lineX = if (position.isLeft(this)) {
-        bounds.right - lineThickness.half
-      } else {
-        bounds.left + lineThickness.half
-      }
+      val lineX = chartEdgeX()
 
       if (isScrollMode) {
         canvas.save()
@@ -317,9 +350,11 @@ protected constructor(
         )
       }
 
+      // No effectiveScroll: chartEdgeX already carries the scroll, and adding it twice put the
+      // line at neither edge.
       line?.drawVertical(
         context = context,
-        x = lineX + effectiveScroll,
+        x = lineX,
         top = bounds.top - topExtension,
         bottom = bounds.bottom + bottomExtension,
       )

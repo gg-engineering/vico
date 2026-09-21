@@ -134,6 +134,19 @@ internal class AxisManager {
     axisCache.forEach { axis -> axis.drawOverLayers(context, axisDimensions) }
   }
 
+  /**
+   * Draws the start axis's line alone.
+   *
+   * For a caller holding the strip before the chart's start off the canvas: everything describing
+   * the data stops there, and this line does not, because it is what marks the start.
+   *
+   * Only this one. The end axis's line already sits at the last entry and is drawn on the ordinary
+   * path, so including it here just drew it a second time. (MOB-2953)
+   */
+  fun drawStartAxisLine(context: CartesianDrawingContext) {
+    (startAxis as? VerticalAxis<*>)?.drawLineOnly(context)
+  }
+
   private fun <S : Axis.Position, T : Axis<S>?> cacheInList(): ReadWriteProperty<AxisManager, T?> =
     object : ReadWriteProperty<AxisManager, T?> {
       var field: T? = null

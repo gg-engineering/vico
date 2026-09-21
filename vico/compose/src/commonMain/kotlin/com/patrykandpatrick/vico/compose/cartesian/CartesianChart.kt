@@ -65,6 +65,7 @@ internal constructor(
   protected val persistentMarkers: (PersistentMarkerScope.(ExtraStore) -> Unit)? = null,
   protected val getXStep: ((CartesianChartModel) -> Double) = { it.getXDeltaGcd() },
   public val visibleLabelsCount: Double = 0.0,
+  public val startPaddingXStep: Double = 0.0,
   public val markerController: CartesianMarkerController = CartesianMarkerController.showOnPress(),
   internal val id: Uuid = Uuid.random(),
   private var previousMarkerTargetHashCode: Int? = null,
@@ -284,6 +285,22 @@ internal constructor(
           layerDimensions.scale(scaleFactor)
         }
       }
+
+      // Room before the first entry, given in x steps like [visibleLabelsCount] rather than in Dp,
+      // so it stays a fixed fraction of a step however the spacing is scaled.
+      //
+      // getFullXRange extends the scrollable range back by startPadding, so reserving it here is
+      // what lets the chart sit half a step before its first entry at the leftmost scroll position.
+      // Asking for that gap through the scroll offset instead could not work: the scroll clamps at
+      // zero, so at the start of the chart there was nothing behind the first entry to scroll into
+      // and the gap collapsed — the first window drew its entry hard against the edge and laid its
+      // labels out differently from every other window. Reserved, the space is real at every
+      // position, and the region before the first entry is simply empty. (MOB-2953)
+      if (startPaddingXStep > 0) {
+        layerDimensions.ensureValuesAtLeast(
+          scalableStartPadding = (startPaddingXStep * layerDimensions.xSpacing).toFloat(),
+        )
+      }
     }
   }
 
@@ -305,6 +322,23 @@ internal constructor(
   internal fun draw(context: CartesianDrawingContext) {
     drawingContext = context
     with(context) {
+      // Nothing is painted in the reserved strip before the first entry.
+      //
+      // Held around the whole of this method, not around the layers alone: the line and points go
+      // through layerBitmap, but the guidelines, separators, ticks and axis lines are drawn
+      // straight onto the canvas by axisManager and the decorations, before and after it. Clipping
+      // only the bitmap left all of those painting into the strip.
+      //
+      // The space itself is untouched — the layer keeps its width and the chart is measured
+      // against the same bounds as ever. This governs what is visible there, nothing else. Once
+      // scrolled past, the strip sits behind the layer's left edge and none of this applies.
+      // (MOB-2953)
+      val contentStart = layerBounds.left + layerDimensions.startPadding - scroll
+      val hidesStrip = startPaddingXStep > 0 && contentStart > layerBounds.left
+      if (hidesStrip) {
+        canvas.save()
+        canvas.clipRect(contentStart, 0f, canvasSize.width, canvasSize.height)
+      }
       if (fadingEdges != null) canvas.saveLayer(Rect(Offset.Zero, canvasSize), EmptyPaint)
       decorations.forEach { it.drawUnderLayers(context) }
       axisManager.drawUnderLayers(context)
@@ -330,6 +364,12 @@ internal constructor(
       forEachPersistentMarker { marker, targets -> marker.drawOverLayers(context, targets) }
       legend?.draw(context)
       if (drawMarker) marker?.drawOverLayers(context, markerTargets)
+      if (hidesStrip) {
+        canvas.restore()
+        // Only the start axis's line follows, outside the clip: it marks where the chart begins,
+        // so it is the one thing that still belongs there.
+        axisManager.drawStartAxisLine(context)
+      }
     }
     drawingContext = null
   }
@@ -545,6 +585,7 @@ internal constructor(
     persistentMarkers: (PersistentMarkerScope.(ExtraStore) -> Unit)? = this.persistentMarkers,
     getXStep: ((CartesianChartModel) -> Double) = this.getXStep,
     visibleLabelsCount: Double = this.visibleLabelsCount,
+    startPaddingXStep: Double = this.startPaddingXStep,
     markerController: CartesianMarkerController = CartesianMarkerController.showOnPress(),
   ): CartesianChart =
     CartesianChart(
@@ -562,6 +603,7 @@ internal constructor(
       persistentMarkers = persistentMarkers,
       getXStep = getXStep,
       visibleLabelsCount = visibleLabelsCount,
+      startPaddingXStep = startPaddingXStep,
       markerController = markerController,
       id = id,
       previousMarkerTargetHashCode = previousMarkerTargetHashCode,
@@ -581,6 +623,7 @@ internal constructor(
         decorations == other.decorations &&
         persistentMarkers == other.persistentMarkers &&
         getXStep == other.getXStep &&
+        startPaddingXStep == other.startPaddingXStep &&
         layers == other.layers &&
         startAxis == other.startAxis &&
         topAxis == other.topAxis &&
@@ -656,6 +699,7 @@ public fun rememberCartesianChart(
   persistentMarkers: (PersistentMarkerScope.(ExtraStore) -> Unit)? = null,
   getXStep: ((CartesianChartModel) -> Double) = { it.getXDeltaGcd() },
   visibleLabelsCount: Double = 0.0,
+  startPaddingXStep: Double = 0.0,
   markerController: CartesianMarkerController = CartesianMarkerController.rememberShowOnPress(),
 ): CartesianChart {
   val wrapper = remember { ValueWrapper<CartesianChart?>(null) }
@@ -674,6 +718,7 @@ public fun rememberCartesianChart(
     persistentMarkers,
     getXStep,
     visibleLabelsCount,
+    startPaddingXStep,
     markerController,
   ) {
     val cartesianChart =
@@ -692,6 +737,7 @@ public fun rememberCartesianChart(
         persistentMarkers = persistentMarkers,
         getXStep = getXStep,
         visibleLabelsCount = visibleLabelsCount,
+        startPaddingXStep = startPaddingXStep,
         markerController = markerController,
       )
         ?: CartesianChart(
@@ -709,6 +755,7 @@ public fun rememberCartesianChart(
           persistentMarkers = persistentMarkers,
           getXStep = getXStep,
           visibleLabelsCount = visibleLabelsCount,
+          startPaddingXStep = startPaddingXStep,
           markerController = markerController,
         )
     wrapper.value = cartesianChart
