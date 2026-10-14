@@ -272,8 +272,14 @@ internal fun Modifier.pointerInput(
     }
     .then(
       // Only add detectTapGestures when NOT using ScrubMarkerController
-      // (ScrubMarkerController handles tap/long-press in the state machine above)
-      if (onInteraction != null && markerController !is ScrubMarkerController) {
+      // (ScrubMarkerController handles tap/long-press in the state machine above), and only for a
+      // controller that wants the gesture — detectTapGestures consumes the tap, so a chart that
+      // never marks anything would otherwise swallow it on its way to whatever surrounds it.
+      if (
+        onInteraction != null &&
+          markerController !is ScrubMarkerController &&
+          markerController?.acceptsGestures != false
+      ) {
         Modifier.pointerInput(onInteraction, longPressEnabled) {
           detectTapGestures(
             onLongPress =
