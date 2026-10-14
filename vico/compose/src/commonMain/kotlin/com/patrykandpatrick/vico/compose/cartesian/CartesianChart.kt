@@ -409,7 +409,9 @@ internal constructor(
       // canvas. Drawing it here means no chart has to reserve room for it. (MOB-2953)
       axisManager.drawMarkerDecorations(context)
       legend?.draw(context)
-      if (drawMarker) marker?.drawOverLayers(context, markerTargets)
+      // The marker's label line carries one or the other: the marker's own label while a point is
+      // marked, the marker's resting text the rest of the time.
+      if (drawMarker) marker?.drawOverLayers(context, markerTargets) else marker?.drawResting(context)
     }
     drawingContext = null
   }
