@@ -49,7 +49,9 @@ import kotlin.math.min
 /**
  * The default [CartesianMarker] implementation.
  *
- * @property label the [TextComponent] for the label.
+ * @property label the [TextComponent] for the label shown while a point is marked. Null when the
+ *   marker only ever rests — a chart that is not scrubbed marks nothing, and then [restingLabel]
+ *   is the whole of it.
  * @property valueFormatter formats the values.
  * @property labelPosition specifies the position of the label.
  * @property indicator returns a [Component] to be drawn at points with the given color.
@@ -70,11 +72,13 @@ import kotlin.math.min
  * @property restingLabelFormatter formats it, from the _x_ range currently in view. Return
  *   `null` to leave the line blank for this frame.
  * @property labelGap the space between the plot's edge and the label on the line [label] and
- *   [restingLabel] share — the gap alone. The labels' own height is measured and reserved on top
- *   of it, so this is the one figure a design actually states.
+ *   [restingLabel] share. It both places them and reserves the room, the labels' own height being
+ *   measured and kept on top of it, so this is the one figure a design actually states. It governs
+ *   only the [LabelPosition.Top] and [LabelPosition.Bottom] line; the positions that follow the
+ *   marked point have no such line and keep using [contentPadding].
  */
 public open class DefaultCartesianMarker(
-  protected val label: TextComponent,
+  protected val label: TextComponent? = null,
   protected val valueFormatter: ValueFormatter = ValueFormatter.default(),
   protected val labelPosition: LabelPosition = LabelPosition.Top,
   protected val indicator: ((Color) -> Component)? = null,
@@ -92,7 +96,7 @@ public open class DefaultCartesianMarker(
 ) : CartesianMarker {
 
   protected val markerCornerBasedShape: MarkerCornerBasedShape? =
-    (label.background as? ShapeComponent)?.shape as? MarkerCornerBasedShape
+    (label?.background as? ShapeComponent)?.shape as? MarkerCornerBasedShape
 
   protected val tickSize: Dp = markerCornerBasedShape?.tickSize.orZero
 
@@ -194,6 +198,7 @@ public open class DefaultCartesianMarker(
     lineComponent.drawHorizontal(this, layerBounds.left, layerBounds.right, primaryY)
 
     val text = horizontalLabelFormatter?.invoke(yValuesPerSeries, primaryTarget.x) ?: return
+    val label = label ?: return
     val labelBounds = label.getBounds(context, text, layerBounds.width.toInt())
     // Anchor the label above the horizontal line by default. If it would clip the
     // top of the chart, fall back to below the line so it stays visible.
@@ -249,6 +254,7 @@ public open class DefaultCartesianMarker(
     targets: List<CartesianMarker.Target>,
   ): Unit =
     with(context) {
+      val label = label ?: return
       val text = valueFormatter.format(context, targets)
       val targetX = targets.averageOf { it.canvasX }
       val labelBounds = label.getBounds(context, text, layerBounds.width.toInt())
@@ -261,13 +267,13 @@ public open class DefaultCartesianMarker(
       when (labelPosition) {
         LabelPosition.Top -> {
           tickPosition = MarkerCornerBasedShape.TickPosition.Bottom
-          y = context.layerBounds.top - tickSize.pixels - contentPadding.bottom.pixels
+          y = context.layerBounds.top - tickSize.pixels - labelGap.pixels
           verticalPosition = Position.Vertical.Top
         }
 
         LabelPosition.Bottom -> {
           tickPosition = MarkerCornerBasedShape.TickPosition.Top
-          y = context.layerBounds.bottom + tickSize.pixels + contentPadding.top.pixels
+          y = context.layerBounds.bottom + tickSize.pixels + labelGap.pixels
           verticalPosition = Position.Vertical.Bottom
         }
 
@@ -359,9 +365,9 @@ public open class DefaultCartesianMarker(
   protected open fun CartesianDrawingContext.restingLabelAnchor(): Pair<Float, Position.Vertical> =
     when (labelPosition) {
       LabelPosition.Bottom ->
-        layerBounds.bottom + tickSize.pixels + contentPadding.top.pixels to Position.Vertical.Bottom
+        layerBounds.bottom + tickSize.pixels + labelGap.pixels to Position.Vertical.Bottom
       else ->
-        layerBounds.top - tickSize.pixels - contentPadding.bottom.pixels to Position.Vertical.Top
+        layerBounds.top - tickSize.pixels - labelGap.pixels to Position.Vertical.Top
     }
 
   protected fun overrideXPositionToFit(
@@ -377,7 +383,7 @@ public open class DefaultCartesianMarker(
 
   protected fun CartesianDrawingContext.drawGuideline(targets: List<CartesianMarker.Target>) {
     val guidelineTop = when (labelPosition) {
-      LabelPosition.Top -> layerBounds.top - tickSize.pixels - contentPadding.bottom.pixels
+      LabelPosition.Top -> layerBounds.top - tickSize.pixels - labelGap.pixels
       LabelPosition.AbovePoint, LabelPosition.AroundPoint -> {
         val topPointY = targets.minOf { target ->
           when (target) {
@@ -392,7 +398,7 @@ public open class DefaultCartesianMarker(
       else -> layerBounds.top
     }
     val guidelineBottom = when (labelPosition) {
-      LabelPosition.Bottom -> layerBounds.bottom + tickSize.pixels + contentPadding.bottom.pixels
+      LabelPosition.Bottom -> layerBounds.bottom + tickSize.pixels + labelGap.pixels
       LabelPosition.BelowPoint -> {
         val bottomPointY = targets.maxOf { target ->
           when (target) {
@@ -431,7 +437,8 @@ public open class DefaultCartesianMarker(
       //
       // contentPadding is deliberately not added: it moves where the label draws, not how much
       // room is kept for it.
-      val labelHeight = maxOf(label.getHeight(this), restingLabel?.getHeight(this) ?: 0f)
+      val labelHeight = maxOf(label?.getHeight(this) ?: 0f, restingLabel?.getHeight(this) ?: 0f)
+      if (labelHeight == 0f) return
       val reserved = labelGap.pixels + labelHeight + tickSize.pixels
       when (labelPosition) {
         LabelPosition.Top,
@@ -457,7 +464,7 @@ public open class DefaultCartesianMarker(
         horizontalLabelPosition == other.horizontalLabelPosition
 
   override fun hashCode(): Int {
-    var result = label.hashCode()
+    var result = label?.hashCode() ?: 0
     result = 31 * result + valueFormatter.hashCode()
     result = 31 * result + labelPosition.hashCode()
     result = 31 * result + indicator.hashCode()
@@ -614,7 +621,7 @@ internal class DefaultValueFormatter(
 /** Creates and remembers a [DefaultCartesianMarker]. */
 @Composable
 public fun rememberDefaultCartesianMarker(
-  label: TextComponent,
+  label: TextComponent? = null,
   valueFormatter: DefaultCartesianMarker.ValueFormatter = remember {
     DefaultCartesianMarker.ValueFormatter.default()
   },

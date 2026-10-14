@@ -250,7 +250,11 @@ internal fun CartesianChartHostImpl(
   // a marker's resting label is drawn whatever the layers happen to be configured with.
   val visibleXRanges = remember { MutableSharedFlow<ClosedFloatingPointRange<Double>>(replay = 1, extraBufferCapacity = 8) }
 
-  LaunchedEffect(chart.marker, visibleXRanges) {
+  // Keyed on the model too, not the scroll alone. The window is one of the things the resting
+  // text is formatted from and the caller's own state is another, and new data can change the
+  // second without touching the first — a card whose text names the week its entries fall in
+  // would go on naming the old one. Restarting replays the last window, so it re-formats.
+  LaunchedEffect(chart.marker, visibleXRanges, model) {
     val marker = chart.marker ?: return@LaunchedEffect
     // The first window as soon as there is one, so the resting text is on the opening frame
     // rather than a debounce late; thereafter only once the scroll has come to rest. The same
