@@ -333,12 +333,17 @@ internal constructor(
       // drawn straight onto the canvas before and after it, so clipping the bitmap alone left all
       // of those painting into the strip.
       //
-      // What it is deliberately NOT held around is the layers, the marker or the legend. The layers
-      // draw from the first entry onwards, so they put nothing in the strip to begin with. A marker
-      // is an overlay on a point the user picked, and a picked point is inside the chart already.
-      // Both sit on the strip's edge at the first entry and reach back over it — the point by its
-      // radius, the marker by its bubble — so clipping them cut each in half, and on a chart that
-      // does not scroll the clip is on permanently and the marker never appeared at all.
+      // What it is deliberately NOT held around is the layers, the markers, the decorations or the
+      // legend. The layers draw from the first entry onwards, so they put nothing in the strip to
+      // begin with. A marker is an overlay on a point the user picked, and a picked point is inside
+      // the chart already. Both sit on the strip's edge at the first entry and reach back over it —
+      // the point by its radius, the marker by its bubble — so clipping them cut each in half, and
+      // on a chart that does not scroll the clip is on permanently and the marker never appeared at
+      // all. That holds for a persistent marker exactly as it does for the active one.
+      //
+      // A decoration describes the chart rather than the strip's contents: a goal line spans the
+      // plot, so clipping it stopped the line short of the start axis and left a gap against the
+      // very edge the axis line marks.
       //
       // The space itself is untouched. The layer keeps its width and the chart is measured against
       // the same bounds as ever; this governs only what is visible there. Once scrolled past, the
@@ -364,28 +369,22 @@ internal constructor(
       // The data goes on top of the furniture that describes it. The layers used to be composited
       // before the axes' over-layer pass and before the marker, so an axis line and a marker drew
       // over the very point they refer to.
-      clippedToChart {
-        decorations.forEach { it.drawUnderLayers(context) }
-        axisManager.drawUnderLayers(context)
-      }
+      decorations.forEach { it.drawUnderLayers(context) }
+      clippedToChart { axisManager.drawUnderLayers(context) }
       // The start axis's line marks where the chart begins, so it belongs in the strip the rest was
       // kept out of.
       if (hidesStrip) axisManager.drawStartAxisLine(context)
-      clippedToChart {
-        axisManager.drawOverLayers(context)
-        decorations.forEach { it.drawOverLayers(context) }
-      }
+      clippedToChart { axisManager.drawOverLayers(context) }
+      decorations.forEach { it.drawOverLayers(context) }
 
       val (layerBitmap, layerCanvas) = getBitmap(cacheKeyNamespace)
       withCanvas(layerCanvas) {
         model.forEachWithLayer(drawingConsumer.apply { this.context = context })
       }
       // TreeMap keeps _markerTargets sorted by key — no per-frame sort needed
-      clippedToChart {
-        forEachPersistentMarker { marker, targets ->
-          marker.drawUnderLayers(context, targets)
-          marker.drawOverLayers(context, targets)
-        }
+      forEachPersistentMarker { marker, targets ->
+        marker.drawUnderLayers(context, targets)
+        marker.drawOverLayers(context, targets)
       }
       val markerTargets = getMarkerTargets(markerX, markerSeriesIndex).ifEmpty {
         // If markerX doesn't match a data point, synthesize an interpolated target
@@ -404,6 +403,11 @@ internal constructor(
         draw(context)
         canvas.restore()
       }
+      // Past the fading-edge layer, so the goal pill is bounded by nothing — the same freedom the
+      // marker's final pass below has always had. A pill pinned outside the visible range sits
+      // beyond the plot by design, and the layer's bounds used to slice whatever hung past the
+      // canvas. Drawing it here means no chart has to reserve room for it. (MOB-2953)
+      axisManager.drawMarkerDecorations(context)
       legend?.draw(context)
       if (drawMarker) marker?.drawOverLayers(context, markerTargets)
     }

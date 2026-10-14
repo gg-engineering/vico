@@ -143,6 +143,12 @@ internal class AxisManager {
    * Only this one. The end axis's line already sits at the last entry and is drawn on the ordinary
    * path, so including it here just drew it a second time. (MOB-2953)
    */
+  /** The vertical axes' marker decorations — drawn outside the start-strip clip, like a marker. */
+  fun drawMarkerDecorations(context: CartesianDrawingContext) {
+    (startAxis as? VerticalAxis<*>)?.drawMarkerDecoration(context)
+    (endAxis as? VerticalAxis<*>)?.drawMarkerDecoration(context)
+  }
+
   fun drawStartAxisLine(context: CartesianDrawingContext) {
     (startAxis as? VerticalAxis<*>)?.drawLineOnly(context)
   }
