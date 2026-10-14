@@ -17,6 +17,9 @@
 package com.patrykandpatrick.vico.compose.cartesian.marker
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Rect
@@ -30,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChart
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.CartesianMeasuringContext
-import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
@@ -94,6 +96,19 @@ public open class DefaultCartesianMarker(
     (label.background as? ShapeComponent)?.shape as? MarkerCornerBasedShape
 
   protected val tickSize: Dp = markerCornerBasedShape?.tickSize.orZero
+
+  /**
+   * The resting text, formatted once per settle and drawn as-is until the next one.
+   *
+   * Formatting per frame would run the caller's formatter — date arithmetic, here — on every
+   * frame of a scroll, and would name each window the scroll passed over rather than the one it
+   * came to rest at. Compose state, so the draw that reads it runs again when it changes.
+   */
+  private var restingText: CharSequence? by mutableStateOf(null)
+
+  override fun onScrollSettled(visibleXRange: ClosedFloatingPointRange<Double>) {
+    restingText = restingLabelFormatter?.invoke(visibleXRange)
+  }
 
   override fun drawOverLayers(
     context: CartesianDrawingContext,
@@ -316,13 +331,14 @@ public open class DefaultCartesianMarker(
   /**
    * Draws [restingLabel] on the line [drawLabel] uses, which is free while nothing is marked.
    *
-   * The _x_ range comes from the chart, so it is the window actually on screen — the same figure
-   * the layers draw against, on a scrolling chart and a static one alike. (MOB-2953)
+   * The text itself is whatever the last [onScrollSettled] produced; this only places it. The
+   * same split [ScrollAwareRangeProvider] uses, where the callback runs on settle and the draw
+   * reads what it left behind. (MOB-2953)
    */
   override fun drawResting(context: CartesianDrawingContext): Unit =
     with(context) {
       val component = restingLabel ?: return
-      val text = restingLabelFormatter?.invoke(getVisibleXRange()) ?: return
+      val text = restingText ?: return
       val (y, verticalPosition) = restingLabelAnchor()
       component.draw(
         context = this,

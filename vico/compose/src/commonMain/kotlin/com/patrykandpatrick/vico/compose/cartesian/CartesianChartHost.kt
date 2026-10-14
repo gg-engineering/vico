@@ -41,6 +41,7 @@ import com.patrykandpatrick.vico.compose.common.Defaults.CHART_HEIGHT
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
@@ -244,6 +245,20 @@ internal fun CartesianChartHostImpl(
       (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
     }
   }
+  // Every window the draw pass sees, for the marker's resting content. Kept apart from the
+  // ScrollAwareRangeProvider feed below, which only exists when a layer has such a provider —
+  // a marker's resting label is drawn whatever the layers happen to be configured with.
+  val visibleXRanges = remember { MutableSharedFlow<ClosedFloatingPointRange<Double>>(replay = 1, extraBufferCapacity = 8) }
+
+  LaunchedEffect(chart.marker, visibleXRanges) {
+    val marker = chart.marker ?: return@LaunchedEffect
+    // The first window as soon as there is one, so the resting text is on the opening frame
+    // rather than a debounce late; thereafter only once the scroll has come to rest. The same
+    // first-then-debounced pair ScrollAwareRangeEffect uses.
+    marker.onScrollSettled(visibleXRanges.first())
+    visibleXRanges.debounce(MARKER_SETTLE_MS).collect(marker::onScrollSettled)
+  }
+
   var lastEmittedScroll by remember { ValueWrapper(Float.NaN) }
   var lastEmittedXSpacing by remember { ValueWrapper(Float.NaN) }
   var lastEmittedChartWidth by remember { ValueWrapper(Float.NaN) }
@@ -400,9 +415,12 @@ internal fun CartesianChartHostImpl(
     zoomState.update(measuringContext.value, layerDimensions, chart.layerBounds, scrollState.value)
     scrollState.update(measuringContext.value, chart.layerBounds, layerDimensions)
 
-    // Emit scroll info to ScrollAwareRangeProviders (cached list, deduplicated).
-    // Always emit — the collector-side skips during snap animation.
-    if (scrollAwareProviders.isNotEmpty() && layerDimensions.xSpacing > 0f && !chart.layerBounds.isEmpty) {
+    // The window, for everything that settles off it: the layers' Y range and the marker's
+    // resting text. Computed once, behind the same guard, and only when the viewport has
+    // actually moved — the draw pass runs for reasons that leave it untouched.
+    // The collector side skips during snap animation.
+    val wantsWindow = scrollAwareProviders.isNotEmpty() || chart.marker != null
+    if (wantsWindow && layerDimensions.xSpacing > 0f) {
       val sp = scrollState.value
       val xs = layerDimensions.xSpacing
       val cw = chart.layerBounds.width
@@ -410,14 +428,17 @@ internal fun CartesianChartHostImpl(
         lastEmittedScroll = sp
         lastEmittedXSpacing = xs
         lastEmittedChartWidth = cw
-        // Compute visible X range from real chart ranges (not estimated)
+        // Computed from real chart ranges (not estimated)
         val visibleRange = measuringContext.value.getVisibleXRange(
           layerDimensions, chart.layerBounds, scrollState.value,
         )
-        val scrollInfo = ScrollAwareRangeProvider.ScrollInfo(
-          sp, xs, cw, visibleRange.start, visibleRange.endInclusive,
-        )
-        scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+        if (chart.marker != null) visibleXRanges.tryEmit(visibleRange)
+        if (scrollAwareProviders.isNotEmpty()) {
+          val scrollInfo = ScrollAwareRangeProvider.ScrollInfo(
+            sp, xs, cw, visibleRange.start, visibleRange.endInclusive,
+          )
+          scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+        }
       }
     }
 
@@ -461,6 +482,14 @@ private fun CartesianChartHostBox(modifier: Modifier, content: @Composable BoxSc
  * - NaN sentinel for uninitialized state (prevents premature animation)
  * - key(provider) ensures correct Compose state tracking per provider identity
  */
+/**
+ * How long the scroll must be still before the marker's resting content is told the window.
+ *
+ * The same figure [ScrollAwareRangeProvider] settles its Y range on, so the text beside the chart
+ * and the axis it describes come to rest together.
+ */
+private const val MARKER_SETTLE_MS = 100L
+
 @OptIn(FlowPreview::class)
 @Composable
 private fun ScrollAwareRangeEffect(

@@ -43,6 +43,16 @@ public interface CartesianMarker : CartesianLayerMarginUpdater<CartesianChartMod
    */
   public fun drawResting(context: CartesianDrawingContext) {}
 
+  /**
+   * Reports the _x_ range in view once scrolling has stopped.
+   *
+   * [drawResting] describes the window rather than the data, and a window read per frame churns
+   * through every one the scroll passes over on its way to the one the user stops at. The chart
+   * calls this when the scroll settles, so the resting content can hold still until then.
+   * (MOB-2953)
+   */
+  public fun onScrollSettled(visibleXRange: ClosedFloatingPointRange<Double>) {}
+
   /** Houses information on an object to be marked. */
   public interface Target {
     /** The _x_ value. */
