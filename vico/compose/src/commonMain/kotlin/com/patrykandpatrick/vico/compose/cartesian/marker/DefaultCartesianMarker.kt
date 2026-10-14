@@ -64,14 +64,14 @@ import kotlin.math.min
  * @property horizontalLabelFormatter formats the crosshair label. Fires with the same
  *   per-series Y values passed to [yLabelCallback] plus the hovered X in data
  *   coordinates. Return `null` to skip the label for this frame (line still draws).
- * @property restingLabel the [TextComponent] for the text that stands on the label's line
- *   while nothing is marked. Null (default) = the line is blank until a marker appears.
- * @property restingLabelPosition where along the plot that text sits.
+ * @property restingLabel the [TextComponent] for the text that stands on the label's line while
+ *   nothing is marked, drawn from the plot's start. Null (default) = the line stays blank until a
+ *   marker appears.
  * @property restingLabelFormatter formats it, from the _x_ range currently in view. Return
  *   `null` to leave the line blank for this frame.
- * @property labelGap how much room to keep outside the plot for the label's line, which
- *   [label] and [restingLabel] share. Reserved as given, so what is asked for is what is
- *   kept: the figure is a design one, measured from the plot edge to the text.
+ * @property labelGap the space between the plot's edge and the label on the line [label] and
+ *   [restingLabel] share — the gap alone. The labels' own height is measured and reserved on top
+ *   of it, so this is the one figure a design actually states.
  */
 public open class DefaultCartesianMarker(
   protected val label: TextComponent,
@@ -86,10 +86,9 @@ public open class DefaultCartesianMarker(
   protected val horizontalLabelPosition: Position.Horizontal? = null,
   protected val horizontalLabelFormatter: ((List<List<Double>>, Double) -> CharSequence?)? = null,
   protected val restingLabel: TextComponent? = null,
-  protected val restingLabelPosition: Position.Horizontal = Position.Horizontal.Start,
   protected val restingLabelFormatter:
     ((ClosedFloatingPointRange<Double>) -> CharSequence?)? = null,
-  protected val labelGap: Dp = 12.dp,
+  protected val labelGap: Dp = 0.dp,
 ) : CartesianMarker {
 
   protected val markerCornerBasedShape: MarkerCornerBasedShape? =
@@ -343,14 +342,9 @@ public open class DefaultCartesianMarker(
       component.draw(
         context = this,
         text = text,
-        x =
-          when (restingLabelPosition) {
-            Position.Horizontal.Start -> layerBounds.getStart(isLtr)
-            Position.Horizontal.Center -> layerBounds.center.x
-            Position.Horizontal.End -> layerBounds.getEnd(isLtr)
-          },
+        x = layerBounds.getStart(isLtr),
         y = y,
-        horizontalPosition = -restingLabelPosition,
+        horizontalPosition = -Position.Horizontal.Start,
         verticalPosition = verticalPosition,
         maxWidth = layerBounds.width.toInt(),
       )
@@ -425,13 +419,20 @@ public open class DefaultCartesianMarker(
     model: CartesianChartModel,
   ) {
     with(context) {
-      // A fixed figure rather than the label's measured height, so the chart does not jump as the
-      // marker shows and hides or its text changes width (matching v3).
+      // Measured with no text, which pads the layout out to the component's own line count: the
+      // height of a line of this style, whatever it ends up saying. So the room follows the type
+      // and a caller states only the gap. A hardcoded 24dp stood here, halved on the way in, and
+      // kept 12dp for a label drawn 16dp out — which is how the label came to overlap whatever
+      // sat beyond the chart.
+      //
+      // Text-independent on purpose, so the chart does not jump as the marker shows and hides or
+      // its text changes (matching v3). Both labels share the line and only one is ever up, so
+      // the taller of the two settles it.
       //
       // contentPadding is deliberately not added: it moves where the label draws, not how much
-      // room is kept for it. Raising it to open the gap pushes the label further out of the space
-      // reserved here, which is how the label came to overlap what sits beyond the chart.
-      val reserved = labelGap.pixels + tickSize.pixels
+      // room is kept for it.
+      val labelHeight = maxOf(label.getHeight(this), restingLabel?.getHeight(this) ?: 0f)
+      val reserved = labelGap.pixels + labelHeight + tickSize.pixels
       when (labelPosition) {
         LabelPosition.Top,
         LabelPosition.AbovePoint -> layerMargins.ensureVerticalValuesAtLeast(top = reserved)
@@ -626,14 +627,13 @@ public fun rememberDefaultCartesianMarker(
   horizontalLabelPosition: Position.Horizontal? = null,
   horizontalLabelFormatter: ((List<List<Double>>, Double) -> CharSequence?)? = null,
   restingLabel: TextComponent? = null,
-  restingLabelPosition: Position.Horizontal = Position.Horizontal.Start,
   restingLabelFormatter: ((ClosedFloatingPointRange<Double>) -> CharSequence?)? = null,
-  labelGap: Dp = 12.dp,
+  labelGap: Dp = 0.dp,
 ): DefaultCartesianMarker {
   val callbackRef = rememberUpdatedState(yLabelCallback)
   val horizontalFormatterRef = rememberUpdatedState(horizontalLabelFormatter)
   val restingFormatterRef = rememberUpdatedState(restingLabelFormatter)
-  return remember(label, valueFormatter, labelPosition, indicator, indicatorSize, guideline, contentPadding, horizontalLabelPosition, restingLabel, restingLabelPosition, labelGap) {
+  return remember(label, valueFormatter, labelPosition, indicator, indicatorSize, guideline, contentPadding, horizontalLabelPosition, restingLabel, labelGap) {
     DefaultCartesianMarker(
       label = label,
       valueFormatter = valueFormatter,
@@ -646,7 +646,6 @@ public fun rememberDefaultCartesianMarker(
       horizontalLabelPosition = horizontalLabelPosition,
       horizontalLabelFormatter = { values, x -> horizontalFormatterRef.value?.invoke(values, x) },
       restingLabel = restingLabel,
-      restingLabelPosition = restingLabelPosition,
       // Read through the ref, so a formatter closing over changing state does not re-create the
       // marker — the same treatment the other two callbacks get.
       restingLabelFormatter = { range -> restingFormatterRef.value?.invoke(range) },
