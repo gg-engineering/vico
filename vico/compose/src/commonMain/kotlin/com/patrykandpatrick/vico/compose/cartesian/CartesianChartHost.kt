@@ -77,7 +77,28 @@ public fun CartesianChartHost(
 ) {
   val mutableRanges = remember { MutableCartesianChartRanges() }
   val modelWrapper by modelProducer.collectAsState(chart, animationSpec, animateIn, mutableRanges)
-  val (model, previousModel, initialRanges, extraStore) = modelWrapper
+  // The producer's ranges are deliberately ignored — see below.
+  val (model, previousModel, _, extraStore) = modelWrapper
+
+  // Ranges are a function of two things — the model, and the chart's range providers — but the
+  // producer only ever computes them when a model is pushed. A window that arrives after that
+  // push (the common case when it is derived from the data that triggered the push) would then
+  // never reach the chart: it would keep serving the domain captured at push time, drawing its
+  // data far off-canvas, until some unrelated push happened to recompute them.
+  //
+  // Recomputing here makes the chart follow its providers. `chart` is the key because a provider
+  // change arrives as a new chart instance, and `copy` keeps the id, so nothing else notices.
+  val hostRanges = remember { MutableCartesianChartRanges() }
+  val initialRanges =
+    remember(chart, model) {
+      if (model == null) {
+        CartesianChartRanges.Empty
+      } else {
+        hostRanges.reset()
+        chart.updateRanges(hostRanges, model)
+        hostRanges.toImmutable()
+      }
+    }
 
   // Scroll-aware range: wrap initialRanges with animated Y values.
   // Two separate vars instead of Pair to avoid boxing/allocation per animation frame.
