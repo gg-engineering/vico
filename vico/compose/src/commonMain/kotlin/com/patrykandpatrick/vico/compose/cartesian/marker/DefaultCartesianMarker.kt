@@ -127,7 +127,7 @@ public open class DefaultCartesianMarker(
       // intersection — matches the vertical guideline's visual ordering so the
       // hovered data point is never obscured by the crosshair.
       drawGuideline(targets)
-      drawHorizontalCrosshair(context, targets, yValuesPerSeries)
+      drawHorizontalCrosshair(context, targets)
 
       val halfIndicatorSize = indicatorSize.pixels.half
       targets.forEach { target ->
@@ -164,6 +164,10 @@ public open class DefaultCartesianMarker(
           }
         }
       }
+      // After the indicators, unlike the line it belongs to: the line stays beneath them so the
+      // marked point is never obscured by its own crosshair, but the text has to be readable where
+      // it crosses one, and a dot drawn over it wins otherwise.
+      drawHorizontalCrosshairLabel(context, targets, yValuesPerSeries)
       // Invoke Y label callback with Y values per target (for chart header / metric info)
       yLabelCallback?.invoke(yValuesPerSeries)
       drawLabel(context, targets)
@@ -180,22 +184,59 @@ public open class DefaultCartesianMarker(
    * The label text is supplied by [horizontalLabelFormatter] — callers may return
    * `null` to suppress the label for that frame while still showing the line.
    */
+  /**
+   * The crosshair's anchor: the last line layer's last point.
+   *
+   * Charts with background percentile bands (e.g. baby growth) push the bands as earlier layers
+   * and the real data line as the final one. `target.points[0]` would snap the crosshair onto the
+   * lowest percentile band; the last point tracks the actual data line. The line and its label
+   * are drawn in separate passes, so both resolve it the same way through here.
+   */
+  private fun crosshairAnchor(
+    targets: List<CartesianMarker.Target>,
+  ): LineCartesianLayerMarkerTarget? =
+    targets.lastOrNull { it is LineCartesianLayerMarkerTarget } as? LineCartesianLayerMarkerTarget
+
+  /**
+   * Where the chart starts, which is where the start axis line is drawn.
+   *
+   * The strip before the first entry is held blank and everything describing the data is clipped
+   * out of it — but the marker is drawn outside that clip on purpose, so that the bubble and the
+   * point's radius are not sliced in half, which leaves the crosshair to respect the start itself.
+   * Carried by the scroll like the axis line, and held inside the layer so it collapses rather
+   * than inverts once the strip is scrolled past. (MOB-2953)
+   */
+  private fun CartesianDrawingContext.chartStartX(): Float =
+    (layerBounds.left + layerDimensions.startPadding - scroll)
+      .coerceIn(layerBounds.left, layerBounds.right)
+
   protected fun drawHorizontalCrosshair(
+    context: CartesianDrawingContext,
+    targets: List<CartesianMarker.Target>,
+  ): Unit = with(context) {
+    if (horizontalLabelPosition == null) return
+    val lineComponent = guideline ?: return
+    val primaryY = crosshairAnchor(targets)?.points?.lastOrNull()?.canvasY ?: return
+
+    lineComponent.drawHorizontal(this, chartStartX(), layerBounds.right, primaryY)
+  }
+
+  /**
+   * The crosshair's label, drawn after the indicators so a dot cannot sit on top of the text.
+   *
+   * Its line is drawn before them instead — the marked point belongs above its own crosshair — so
+   * the two are separate passes rather than one.
+   */
+  protected fun drawHorizontalCrosshairLabel(
     context: CartesianDrawingContext,
     targets: List<CartesianMarker.Target>,
     yValuesPerSeries: List<List<Double>>,
   ): Unit = with(context) {
     val labelPositionHorizontal = horizontalLabelPosition ?: return
     val lineComponent = guideline ?: return
-    // Pick the *last* line layer's last point as the crosshair anchor — charts with
-    // background percentile bands (e.g. baby growth) push the bands as earlier layers
-    // and the real data line as the final one. `target.points[0]` would snap the line
-    // onto the lowest percentile band; `lastOrNull()` tracks the actual data line.
-    val primaryTarget = targets.lastOrNull { it is LineCartesianLayerMarkerTarget }
-      as? LineCartesianLayerMarkerTarget ?: return
+    val primaryTarget = crosshairAnchor(targets) ?: return
     val primaryY = primaryTarget.points.lastOrNull()?.canvasY ?: return
-
-    lineComponent.drawHorizontal(this, layerBounds.left, layerBounds.right, primaryY)
+    val chartStart = chartStartX()
 
     val text = horizontalLabelFormatter?.invoke(yValuesPerSeries, primaryTarget.x) ?: return
     val label = label ?: return
@@ -220,7 +261,11 @@ public open class DefaultCartesianMarker(
       text = text,
       x =
         when (labelPositionHorizontal) {
-          Position.Horizontal.Start -> layerBounds.getStart(isLtr)
+          // The chart's start, not the layer's, so the label sits after the axis line rather than
+          // inside the blank strip in front of it — and off it by the same gap the labels on the
+          // line already keep from the plot's edge, so it does not read as touching the axis.
+          Position.Horizontal.Start ->
+            if (isLtr) chartStart + labelGap.pixels else layerBounds.getStart(isLtr)
           Position.Horizontal.Center -> layerBounds.center.x
           Position.Horizontal.End -> layerBounds.getEnd(isLtr)
         },
