@@ -337,7 +337,7 @@ internal fun CartesianChartHostImpl(
                 // Even when narrowedTargets is empty (no data points in window),
                 // consumer can still handle it (e.g., snap to nearest label).
                 val allTargetXValues = chart.allMarkerTargetXValues
-                val userMarkerX = scrubCallback(x, allTargetXValues)
+                val userMarkerX = scrubCallback(x, allTargetXValues, interaction)
                 if (userMarkerX != null) {
                   markerX = userMarkerX
                   markerSeriesIndex = seriesIndex
@@ -347,7 +347,7 @@ internal fun CartesianChartHostImpl(
                 }
               } else {
                 // Dismiss — notify consumer
-                scrubCallback(null, emptyList())
+                scrubCallback(null, emptyList(), interaction)
                 markerX = null
                 markerSeriesIndex = null
               }
