@@ -17,6 +17,9 @@
 package com.patrykandpatrick.vico.compose.cartesian.marker
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.geometry.Rect
@@ -46,7 +49,9 @@ import kotlin.math.min
 /**
  * The default [CartesianMarker] implementation.
  *
- * @property label the [TextComponent] for the label.
+ * @property label the [TextComponent] for the label shown while a point is marked. Null when the
+ *   marker only ever rests — a chart that is not scrubbed marks nothing, and then [restingLabel]
+ *   is the whole of it.
  * @property valueFormatter formats the values.
  * @property labelPosition specifies the position of the label.
  * @property indicator returns a [Component] to be drawn at points with the given color.
@@ -61,9 +66,19 @@ import kotlin.math.min
  * @property horizontalLabelFormatter formats the crosshair label. Fires with the same
  *   per-series Y values passed to [yLabelCallback] plus the hovered X in data
  *   coordinates. Return `null` to skip the label for this frame (line still draws).
+ * @property restingLabel the [TextComponent] for the text that stands on the label's line while
+ *   nothing is marked, drawn from the plot's start. Null (default) = the line stays blank until a
+ *   marker appears.
+ * @property restingLabelFormatter formats it, from the _x_ range currently in view. Return
+ *   `null` to leave the line blank for this frame.
+ * @property labelGap the space between the plot's edge and the label on the line [label] and
+ *   [restingLabel] share. It both places them and reserves the room, the labels' own height being
+ *   measured and kept on top of it, so this is the one figure a design actually states. It governs
+ *   only the [LabelPosition.Top] and [LabelPosition.Bottom] line; the positions that follow the
+ *   marked point have no such line and keep using [contentPadding].
  */
 public open class DefaultCartesianMarker(
-  protected val label: TextComponent,
+  protected val label: TextComponent? = null,
   protected val valueFormatter: ValueFormatter = ValueFormatter.default(),
   protected val labelPosition: LabelPosition = LabelPosition.Top,
   protected val indicator: ((Color) -> Component)? = null,
@@ -74,12 +89,29 @@ public open class DefaultCartesianMarker(
   protected val yLabelCallback: ((List<List<Double>>) -> Unit)? = null,
   protected val horizontalLabelPosition: Position.Horizontal? = null,
   protected val horizontalLabelFormatter: ((List<List<Double>>, Double) -> CharSequence?)? = null,
+  protected val restingLabel: TextComponent? = null,
+  protected val restingLabelFormatter:
+    ((ClosedFloatingPointRange<Double>) -> CharSequence?)? = null,
+  protected val labelGap: Dp = 0.dp,
 ) : CartesianMarker {
 
   protected val markerCornerBasedShape: MarkerCornerBasedShape? =
-    (label.background as? ShapeComponent)?.shape as? MarkerCornerBasedShape
+    (label?.background as? ShapeComponent)?.shape as? MarkerCornerBasedShape
 
   protected val tickSize: Dp = markerCornerBasedShape?.tickSize.orZero
+
+  /**
+   * The resting text, formatted once per settle and drawn as-is until the next one.
+   *
+   * Formatting per frame would run the caller's formatter — date arithmetic, here — on every
+   * frame of a scroll, and would name each window the scroll passed over rather than the one it
+   * came to rest at. Compose state, so the draw that reads it runs again when it changes.
+   */
+  private var restingText: CharSequence? by mutableStateOf(null)
+
+  override fun onScrollSettled(visibleXRange: ClosedFloatingPointRange<Double>) {
+    restingText = restingLabelFormatter?.invoke(visibleXRange)
+  }
 
   override fun drawOverLayers(
     context: CartesianDrawingContext,
@@ -95,7 +127,7 @@ public open class DefaultCartesianMarker(
       // intersection — matches the vertical guideline's visual ordering so the
       // hovered data point is never obscured by the crosshair.
       drawGuideline(targets)
-      drawHorizontalCrosshair(context, targets, yValuesPerSeries)
+      drawHorizontalCrosshair(context, targets)
 
       val halfIndicatorSize = indicatorSize.pixels.half
       targets.forEach { target ->
@@ -132,6 +164,10 @@ public open class DefaultCartesianMarker(
           }
         }
       }
+      // After the indicators, unlike the line it belongs to: the line stays beneath them so the
+      // marked point is never obscured by its own crosshair, but the text has to be readable where
+      // it crosses one, and a dot drawn over it wins otherwise.
+      drawHorizontalCrosshairLabel(context, targets, yValuesPerSeries)
       // Invoke Y label callback with Y values per target (for chart header / metric info)
       yLabelCallback?.invoke(yValuesPerSeries)
       drawLabel(context, targets)
@@ -148,24 +184,62 @@ public open class DefaultCartesianMarker(
    * The label text is supplied by [horizontalLabelFormatter] — callers may return
    * `null` to suppress the label for that frame while still showing the line.
    */
+  /**
+   * The crosshair's anchor: the last line layer's last point.
+   *
+   * Charts with background percentile bands (e.g. baby growth) push the bands as earlier layers
+   * and the real data line as the final one. `target.points[0]` would snap the crosshair onto the
+   * lowest percentile band; the last point tracks the actual data line. The line and its label
+   * are drawn in separate passes, so both resolve it the same way through here.
+   */
+  private fun crosshairAnchor(
+    targets: List<CartesianMarker.Target>,
+  ): LineCartesianLayerMarkerTarget? =
+    targets.lastOrNull { it is LineCartesianLayerMarkerTarget } as? LineCartesianLayerMarkerTarget
+
+  /**
+   * Where the chart starts, which is where the start axis line is drawn.
+   *
+   * The strip before the first entry is held blank and everything describing the data is clipped
+   * out of it — but the marker is drawn outside that clip on purpose, so that the bubble and the
+   * point's radius are not sliced in half, which leaves the crosshair to respect the start itself.
+   * Carried by the scroll like the axis line, and held inside the layer so it collapses rather
+   * than inverts once the strip is scrolled past. (MOB-2953)
+   */
+  private fun CartesianDrawingContext.chartStartX(): Float =
+    (layerBounds.left + layerDimensions.startPadding - scroll)
+      .coerceIn(layerBounds.left, layerBounds.right)
+
   protected fun drawHorizontalCrosshair(
+    context: CartesianDrawingContext,
+    targets: List<CartesianMarker.Target>,
+  ): Unit = with(context) {
+    if (horizontalLabelPosition == null) return
+    val lineComponent = guideline ?: return
+    val primaryY = crosshairAnchor(targets)?.points?.lastOrNull()?.canvasY ?: return
+
+    lineComponent.drawHorizontal(this, chartStartX(), layerBounds.right, primaryY)
+  }
+
+  /**
+   * The crosshair's label, drawn after the indicators so a dot cannot sit on top of the text.
+   *
+   * Its line is drawn before them instead — the marked point belongs above its own crosshair — so
+   * the two are separate passes rather than one.
+   */
+  protected fun drawHorizontalCrosshairLabel(
     context: CartesianDrawingContext,
     targets: List<CartesianMarker.Target>,
     yValuesPerSeries: List<List<Double>>,
   ): Unit = with(context) {
     val labelPositionHorizontal = horizontalLabelPosition ?: return
     val lineComponent = guideline ?: return
-    // Pick the *last* line layer's last point as the crosshair anchor — charts with
-    // background percentile bands (e.g. baby growth) push the bands as earlier layers
-    // and the real data line as the final one. `target.points[0]` would snap the line
-    // onto the lowest percentile band; `lastOrNull()` tracks the actual data line.
-    val primaryTarget = targets.lastOrNull { it is LineCartesianLayerMarkerTarget }
-      as? LineCartesianLayerMarkerTarget ?: return
+    val primaryTarget = crosshairAnchor(targets) ?: return
     val primaryY = primaryTarget.points.lastOrNull()?.canvasY ?: return
-
-    lineComponent.drawHorizontal(this, layerBounds.left, layerBounds.right, primaryY)
+    val chartStart = chartStartX()
 
     val text = horizontalLabelFormatter?.invoke(yValuesPerSeries, primaryTarget.x) ?: return
+    val label = label ?: return
     val labelBounds = label.getBounds(context, text, layerBounds.width.toInt())
     // Anchor the label above the horizontal line by default. If it would clip the
     // top of the chart, fall back to below the line so it stays visible.
@@ -187,7 +261,11 @@ public open class DefaultCartesianMarker(
       text = text,
       x =
         when (labelPositionHorizontal) {
-          Position.Horizontal.Start -> layerBounds.getStart(isLtr)
+          // The chart's start, not the layer's, so the label sits after the axis line rather than
+          // inside the blank strip in front of it — and off it by the same gap the labels on the
+          // line already keep from the plot's edge, so it does not read as touching the axis.
+          Position.Horizontal.Start ->
+            if (isLtr) chartStart + labelGap.pixels else layerBounds.getStart(isLtr)
           Position.Horizontal.Center -> layerBounds.center.x
           Position.Horizontal.End -> layerBounds.getEnd(isLtr)
         },
@@ -221,6 +299,7 @@ public open class DefaultCartesianMarker(
     targets: List<CartesianMarker.Target>,
   ): Unit =
     with(context) {
+      val label = label ?: return
       val text = valueFormatter.format(context, targets)
       val targetX = targets.averageOf { it.canvasX }
       val labelBounds = label.getBounds(context, text, layerBounds.width.toInt())
@@ -233,13 +312,13 @@ public open class DefaultCartesianMarker(
       when (labelPosition) {
         LabelPosition.Top -> {
           tickPosition = MarkerCornerBasedShape.TickPosition.Bottom
-          y = context.layerBounds.top - tickSize.pixels - contentPadding.bottom.pixels
+          y = context.layerBounds.top - tickSize.pixels - labelGap.pixels
           verticalPosition = Position.Vertical.Top
         }
 
         LabelPosition.Bottom -> {
           tickPosition = MarkerCornerBasedShape.TickPosition.Top
-          y = context.layerBounds.bottom + tickSize.pixels + contentPadding.top.pixels
+          y = context.layerBounds.bottom + tickSize.pixels + labelGap.pixels
           verticalPosition = Position.Vertical.Bottom
         }
 
@@ -299,6 +378,43 @@ public open class DefaultCartesianMarker(
       )
     }
 
+  /**
+   * Draws [restingLabel] on the line [drawLabel] uses, which is free while nothing is marked.
+   *
+   * The text itself is whatever the last [onScrollSettled] produced; this only places it. The
+   * same split [ScrollAwareRangeProvider] uses, where the callback runs on settle and the draw
+   * reads what it left behind. (MOB-2953)
+   */
+  override fun drawResting(context: CartesianDrawingContext): Unit =
+    with(context) {
+      val component = restingLabel ?: return
+      val text = restingText ?: return
+      val (y, verticalPosition) = restingLabelAnchor()
+      component.draw(
+        context = this,
+        text = text,
+        x = layerBounds.getStart(isLtr),
+        y = y,
+        horizontalPosition = -Position.Horizontal.Start,
+        verticalPosition = verticalPosition,
+        maxWidth = layerBounds.width.toInt(),
+      )
+    }
+
+  /**
+   * Where the resting text sits: the same line [drawLabel] puts a Top or Bottom marker label on.
+   *
+   * The point-anchored label positions follow the marked point rather than a line, so there is no
+   * line to share and the plot's top edge stands in.
+   */
+  protected open fun CartesianDrawingContext.restingLabelAnchor(): Pair<Float, Position.Vertical> =
+    when (labelPosition) {
+      LabelPosition.Bottom ->
+        layerBounds.bottom + tickSize.pixels + labelGap.pixels to Position.Vertical.Bottom
+      else ->
+        layerBounds.top - tickSize.pixels - labelGap.pixels to Position.Vertical.Top
+    }
+
   protected fun overrideXPositionToFit(
     xPosition: Float,
     bounds: Rect,
@@ -312,7 +428,7 @@ public open class DefaultCartesianMarker(
 
   protected fun CartesianDrawingContext.drawGuideline(targets: List<CartesianMarker.Target>) {
     val guidelineTop = when (labelPosition) {
-      LabelPosition.Top -> layerBounds.top - tickSize.pixels - contentPadding.bottom.pixels
+      LabelPosition.Top -> layerBounds.top - tickSize.pixels - labelGap.pixels
       LabelPosition.AbovePoint, LabelPosition.AroundPoint -> {
         val topPointY = targets.minOf { target ->
           when (target) {
@@ -327,7 +443,7 @@ public open class DefaultCartesianMarker(
       else -> layerBounds.top
     }
     val guidelineBottom = when (labelPosition) {
-      LabelPosition.Bottom -> layerBounds.bottom + tickSize.pixels + contentPadding.bottom.pixels
+      LabelPosition.Bottom -> layerBounds.bottom + tickSize.pixels + labelGap.pixels
       LabelPosition.BelowPoint -> {
         val bottomPointY = targets.maxOf { target ->
           when (target) {
@@ -354,17 +470,27 @@ public open class DefaultCartesianMarker(
     model: CartesianChartModel,
   ) {
     with(context) {
-      // Fixed height prevents chart jump when marker shows/hides (matching v3)
-      // contentPadding is NOT included — it only affects label draw position, not chart margin
-      val fixedLabelHeight = 24f * density.density
+      // Measured with no text, which pads the layout out to the component's own line count: the
+      // height of a line of this style, whatever it ends up saying. So the room follows the type
+      // and a caller states only the gap. A hardcoded 24dp stood here, halved on the way in, and
+      // kept 12dp for a label drawn 16dp out — which is how the label came to overlap whatever
+      // sat beyond the chart.
+      //
+      // Text-independent on purpose, so the chart does not jump as the marker shows and hides or
+      // its text changes (matching v3). Both labels share the line and only one is ever up, so
+      // the taller of the two settles it.
+      //
+      // contentPadding is deliberately not added: it moves where the label draws, not how much
+      // room is kept for it.
+      val labelHeight = maxOf(label?.getHeight(this) ?: 0f, restingLabel?.getHeight(this) ?: 0f)
+      if (labelHeight == 0f) return
+      val reserved = labelGap.pixels + labelHeight + tickSize.pixels
       when (labelPosition) {
         LabelPosition.Top,
-        LabelPosition.AbovePoint ->
-          layerMargins.ensureValuesAtLeast(top = fixedLabelHeight + tickSize.pixels)
+        LabelPosition.AbovePoint -> layerMargins.ensureVerticalValuesAtLeast(top = reserved)
 
         LabelPosition.Bottom,
-        LabelPosition.BelowPoint ->
-          layerMargins.ensureValuesAtLeast(bottom = fixedLabelHeight + tickSize.pixels)
+        LabelPosition.BelowPoint -> layerMargins.ensureVerticalValuesAtLeast(bottom = reserved)
 
         LabelPosition.AroundPoint -> Unit
       }
@@ -383,7 +509,7 @@ public open class DefaultCartesianMarker(
         horizontalLabelPosition == other.horizontalLabelPosition
 
   override fun hashCode(): Int {
-    var result = label.hashCode()
+    var result = label?.hashCode() ?: 0
     result = 31 * result + valueFormatter.hashCode()
     result = 31 * result + labelPosition.hashCode()
     result = 31 * result + indicator.hashCode()
@@ -540,7 +666,7 @@ internal class DefaultValueFormatter(
 /** Creates and remembers a [DefaultCartesianMarker]. */
 @Composable
 public fun rememberDefaultCartesianMarker(
-  label: TextComponent,
+  label: TextComponent? = null,
   valueFormatter: DefaultCartesianMarker.ValueFormatter = remember {
     DefaultCartesianMarker.ValueFormatter.default()
   },
@@ -552,10 +678,14 @@ public fun rememberDefaultCartesianMarker(
   yLabelCallback: ((List<List<Double>>) -> Unit)? = null,
   horizontalLabelPosition: Position.Horizontal? = null,
   horizontalLabelFormatter: ((List<List<Double>>, Double) -> CharSequence?)? = null,
+  restingLabel: TextComponent? = null,
+  restingLabelFormatter: ((ClosedFloatingPointRange<Double>) -> CharSequence?)? = null,
+  labelGap: Dp = 0.dp,
 ): DefaultCartesianMarker {
   val callbackRef = rememberUpdatedState(yLabelCallback)
   val horizontalFormatterRef = rememberUpdatedState(horizontalLabelFormatter)
-  return remember(label, valueFormatter, labelPosition, indicator, indicatorSize, guideline, contentPadding, horizontalLabelPosition) {
+  val restingFormatterRef = rememberUpdatedState(restingLabelFormatter)
+  return remember(label, valueFormatter, labelPosition, indicator, indicatorSize, guideline, contentPadding, horizontalLabelPosition, restingLabel, labelGap) {
     DefaultCartesianMarker(
       label = label,
       valueFormatter = valueFormatter,
@@ -567,6 +697,11 @@ public fun rememberDefaultCartesianMarker(
       yLabelCallback = { values -> callbackRef.value?.invoke(values) },
       horizontalLabelPosition = horizontalLabelPosition,
       horizontalLabelFormatter = { values, x -> horizontalFormatterRef.value?.invoke(values, x) },
+      restingLabel = restingLabel,
+      // Read through the ref, so a formatter closing over changing state does not re-create the
+      // marker — the same treatment the other two callbacks get.
+      restingLabelFormatter = { range -> restingFormatterRef.value?.invoke(range) },
+      labelGap = labelGap,
     )
   }
 }

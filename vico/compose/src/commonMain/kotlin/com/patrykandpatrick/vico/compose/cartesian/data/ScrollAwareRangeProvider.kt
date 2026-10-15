@@ -43,8 +43,40 @@ public class ScrollAwareRangeProvider(
   private val paddingEntries: Int = 1,
   internal val debounceMs: Long = 100L,
   internal val animDurationMs: Int = Animation.RANGE_ANIM_DURATION,
+  private val windowKey: String? = null,
   private val onVisibleEntries: (visibleEntries: List<List<Pair<Double, Double>>>, visibleXRange: ClosedRange<Double>) -> Pair<ClosedRange<Double>, List<Double>>,
 ) : CartesianLayerRangeProvider {
+
+  /**
+   * A chart's bounds, as supplied alongside the data rather than beside it.
+   *
+   * Any value may be [Double.NaN], meaning "no opinion" — the provider then falls through to the
+   * model's own range for that bound.
+   */
+  public data class Window(
+    val minX: Double = Double.NaN,
+    val maxX: Double = Double.NaN,
+    val seedMinY: Double = Double.NaN,
+    val seedMaxY: Double = Double.NaN,
+  )
+
+  public companion object {
+    /**
+     * The bounds to draw a model in, keyed by whatever the producer's consumers call themselves.
+     *
+     * Bounds are derived from the data they apply to, so sending them separately — through state
+     * the chart reads on a later frame — lets a model arrive before its own window. The chart then
+     * draws that data against the previous window, which on first load is no window at all.
+     * Travelling in the transaction makes the two inseparable.
+     *
+     * Keyed because one producer can feed several charts that share a model and differ only in the
+     * span they show; each looks itself up by the key it was built with.
+     */
+    public val WindowKey: ExtraStore.Key<Map<String, Window>> = ExtraStore.Key()
+  }
+
+  private fun windowFromExtras(extraStore: ExtraStore): Window? =
+    windowKey?.let { key -> extraStore.getOrNull(WindowKey)?.get(key) }
 
   init {
     require(paddingEntries >= 0) { "paddingEntries must be >= 0" }
@@ -93,22 +125,26 @@ public class ScrollAwareRangeProvider(
   private var lastVisibleEndIndex: Int = -1
   private var lastVisibleEntries: List<List<Pair<Double, Double>>> = emptyList()
 
+  // The window that came with the model is preferred over the one set during composition: it is
+  // the one derived from this very data, where the field may still describe the previous model.
   override fun getMinX(minX: Double, maxX: Double, extraStore: ExtraStore): Double =
-    if (!xRangeMin.isNaN()) xRangeMin else minX
+    (windowFromExtras(extraStore)?.minX ?: xRangeMin).takeIf { !it.isNaN() } ?: minX
 
   override fun getMaxX(minX: Double, maxX: Double, extraStore: ExtraStore): Double =
-    if (!xRangeMax.isNaN()) xRangeMax else maxX
+    (windowFromExtras(extraStore)?.maxX ?: xRangeMax).takeIf { !it.isNaN() } ?: maxX
 
   // Priority: animated current → seed hint (frame-0, segment switch) → Vico intrinsic (full dataset)
+  // The seed reverses the X precedence above: the field can be refreshed after a scroll settles,
+  // by a caller that is not pushing a model, so it is the fresher of the two whenever it is set.
   override fun getMinY(minY: Double, maxY: Double, extraStore: ExtraStore): Double =
     if (isCacheReady && !currentMinY.isNaN()) currentMinY
-    else if (!seedMinY.isNaN()) seedMinY
-    else minY
+    else (seedMinY.takeIf { !it.isNaN() } ?: windowFromExtras(extraStore)?.seedMinY)
+      ?.takeIf { !it.isNaN() } ?: minY
 
   override fun getMaxY(minY: Double, maxY: Double, extraStore: ExtraStore): Double =
     if (isCacheReady && !currentMaxY.isNaN()) currentMaxY
-    else if (!seedMaxY.isNaN()) seedMaxY
-    else maxY
+    else (seedMaxY.takeIf { !it.isNaN() } ?: windowFromExtras(extraStore)?.seedMaxY)
+      ?.takeIf { !it.isNaN() } ?: maxY
 
   /**
    * Builds per-series entry lists + a merged sorted X array for binary search.
@@ -239,11 +275,12 @@ public fun rememberScrollAwareRangeProvider(
   maxX: Double = Double.NaN,
   seedMinY: Double = Double.NaN,
   seedMaxY: Double = Double.NaN,
+  windowKey: String? = null,
   onVisibleEntries: (visibleEntries: List<List<Pair<Double, Double>>>, visibleXRange: ClosedRange<Double>) -> Pair<ClosedRange<Double>, List<Double>>,
 ): ScrollAwareRangeProvider {
   val callbackRef = rememberUpdatedState(onVisibleEntries)
-  val provider = remember(paddingEntries, debounceMs, animDurationMs) {
-    ScrollAwareRangeProvider(paddingEntries, debounceMs, animDurationMs) { entries, xRange ->
+  val provider = remember(paddingEntries, debounceMs, animDurationMs, windowKey) {
+    ScrollAwareRangeProvider(paddingEntries, debounceMs, animDurationMs, windowKey) { entries, xRange ->
       callbackRef.value(entries, xRange)
     }
   }

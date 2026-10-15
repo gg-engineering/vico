@@ -259,35 +259,85 @@ protected constructor(
         )
       }
 
-      // Draw marker decoration (e.g., goal weight indicator)
-      markerDecoration?.let { decoration ->
-        val yRange = ranges.getYRange(position)
-        val markerY = decoration.y(model.extraStore)
-        val markerLabel = decoration.label(model.extraStore)
+    }
+  }
 
-        // Use animated range — marker moves smoothly with Y-axis animation
-        val canvasY = if (yRange.length > 0 && markerY in yRange.minY..yRange.maxY) {
-          bounds.bottom - bounds.height * ((markerY - yRange.minY) / yRange.length).toFloat()
-        } else if (markerY < yRange.minY) {
-          // Below range — position below the axis
-          bounds.bottom + decoration.outsideRangeOffset
-        } else {
-          // Above range — position above the axis
-          bounds.bottom - bounds.height - decoration.outsideRangeOffset
-        }
+  /**
+   * Draws the marker decoration alone — the goal pill and anything else pinned to a y value.
+   *
+   * Kept apart from [drawOverLayers] so the chart can draw it outside the clip that hides the
+   * strip before a chart's start. Like a marker, it is an overlay on a value the caller chose
+   * rather than part of the data, and it sits at the axis where that clip does not apply.
+   * (MOB-2953)
+   */
+  public open fun drawMarkerDecoration(context: CartesianDrawingContext) {
+    with(context) {
+    // Draw marker decoration (e.g., goal weight indicator)
+    markerDecoration?.let { decoration ->
+      val yRange = ranges.getYRange(position)
+      val markerY = decoration.y(model.extraStore)
+      val markerLabel = decoration.label(model.extraStore)
 
-        val markerX = bounds.center.x
-
-        decoration.markerComponent?.draw(
-          context = this,
-          text = markerLabel,
-          x = markerX,
-          y = canvasY,
-          horizontalPosition = Position.Horizontal.Center,
-          verticalPosition = decoration.verticalLabelPosition,
-          rotationDegrees = decoration.labelRotationDegrees,
-        )
+      // Use animated range — marker moves smoothly with Y-axis animation
+      val canvasY = if (yRange.length > 0 && markerY in yRange.minY..yRange.maxY) {
+        bounds.bottom - bounds.height * ((markerY - yRange.minY) / yRange.length).toFloat()
+      } else if (markerY < yRange.minY) {
+        // Below range — position below the axis
+        bounds.bottom + decoration.outsideRangeOffset.pixels
+      } else {
+        // Above range — position above the axis
+        bounds.top - decoration.outsideRangeOffset.pixels
       }
+
+      val markerX = bounds.center.x
+
+      decoration.markerComponent?.draw(
+        context = this,
+        text = markerLabel,
+        x = markerX,
+        y = canvasY,
+        horizontalPosition = Position.Horizontal.Center,
+        verticalPosition = decoration.verticalLabelPosition,
+        rotationDegrees = decoration.labelRotationDegrees,
+      )
+    }
+    }
+  }
+
+  /**
+   * Draws the axis line and its ticks alone, without the guidelines or labels.
+   *
+   * A chart scrolls without end, and a start and end are imposed on it by not drawing beyond them.
+   * The line is the exception: it is what marks where the chart begins, so it is drawn whether or
+   * not it falls inside. The guidelines and labels are not — they describe the data, so they stop
+   * where the data does. (MOB-2953)
+   */
+  internal fun drawLineOnly(context: CartesianDrawingContext) {
+    with(context) {
+      val line = line ?: return
+      line.drawVertical(context, chartEdgeX(), layerBounds.top, layerBounds.bottom)
+    }
+  }
+
+  /**
+   * Where this axis's line belongs: the point the chart starts or ends at.
+   *
+   * Not the axis's own bounds, which is the gutter it reserves. An axis that reserves nothing has
+   * zero-width bounds against the canvas edge, and the line was landing there with half of it
+   * off-screen. The chart's start is its first entry — the layer's left edge plus the padding
+   * reserved before it — and it moves with the scroll. (MOB-2953)
+   */
+  private fun CartesianDrawingContext.chartEdgeX(): Float {
+    val firstEntryX = layerBounds.left + layerDimensions.startPadding - scroll
+    return if (position.isLeft(this)) {
+      firstEntryX
+    } else {
+      // Symmetric with the start: the last entry's position, plus whatever is reserved after it.
+      // This was pinned to layerBounds.right, so the end line showed against the right edge
+      // wherever the scroll happened to be — marking an end that was not there.
+      val contentWidth =
+        ((ranges.maxX - ranges.minX) / ranges.xStep).toFloat() * layerDimensions.xSpacing
+      firstEntryX + contentWidth + layerDimensions.endPadding
     }
   }
 
@@ -301,11 +351,7 @@ protected constructor(
         if (position.isLeft(this)) -scroll else getMaxScrollDistance() - scroll
       } else 0f
 
-      val lineX = if (position.isLeft(this)) {
-        bounds.right - lineThickness.half
-      } else {
-        bounds.left + lineThickness.half
-      }
+      val lineX = chartEdgeX()
 
       if (isScrollMode) {
         canvas.save()
@@ -317,9 +363,11 @@ protected constructor(
         )
       }
 
+      // No effectiveScroll: chartEdgeX already carries the scroll, and adding it twice put the
+      // line at neither edge.
       line?.drawVertical(
         context = context,
-        x = lineX + effectiveScroll,
+        x = lineX,
         top = bounds.top - topExtension,
         bottom = bounds.bottom + bottomExtension,
       )
@@ -477,6 +525,24 @@ protected constructor(
       )
     }
 
+  /**
+   * The marker decoration's width, which the gutter has to be at least as wide as.
+   *
+   * The marker is centred on the gutter, so a pill wider than the gutter overhangs it by half the
+   * difference — and on an end axis that half runs straight off the canvas. Sizing the gutter to
+   * fit it is what keeps the marker whole without moving it off centre. (MOB-2953)
+   */
+  private fun CartesianMeasuringContext.getMarkerDecorationWidth(): Float =
+    markerDecoration
+      ?.let { decoration ->
+        decoration.markerComponent?.getWidth(
+          context = this,
+          text = decoration.label(model.extraStore),
+          rotationDegrees = decoration.labelRotationDegrees,
+        )
+      }
+      .orZero
+
   protected open fun getWidth(context: CartesianMeasuringContext, freeHeight: Float): Float =
     with(context) {
       val outwardTickLength =
@@ -485,7 +551,10 @@ protected constructor(
           TickPosition.Inside -> 0f
           TickPosition.Cross -> this.tickLength / 2
         }
-      when (size) {
+      val markerWidth = getMarkerDecorationWidth()
+      max(
+        markerWidth,
+        when (size) {
         is Size.Auto -> {
           val titleComponentWidth =
             title(model.extraStore)
@@ -516,7 +585,8 @@ protected constructor(
           titleComponent
             ?.getWidth(context = this, text = size.text, rotationDegrees = labelRotationDegrees)
             .orZero + outwardTickLength + lineThickness.half
-      }
+        },
+      )
     }
 
   protected fun CartesianMeasuringContext.getMaxLabelHeight(): Float =
@@ -622,7 +692,11 @@ protected constructor(
    * @property label returns the label text to display.
    * @property verticalLabelPosition vertical alignment of the label relative to the Y position.
    * @property labelRotationDegrees label rotation.
-   * @property outsideRangeOffset pixel offset from axis edge when Y is outside visible range.
+   * @property outsideRangeOffset how far outside the plot to place the marker when its _y_ lies
+   *   beyond the visible range. A [Dp], because the figure is a design one: as a raw pixel count
+   *   the gap shrank as screen density rose, so 60 px meant 20 dp on a 3x phone and 30 dp on a 2x
+   *   one. The chart reserves this much room plus the marker's own half-height, so the marker is
+   *   fully visible above and below without being moved.
    */
   public data class MarkerDecoration(
     public val y: (ExtraStore) -> Double,
@@ -630,7 +704,7 @@ protected constructor(
     public val label: (ExtraStore) -> CharSequence = { "" },
     public val verticalLabelPosition: Position.Vertical = Position.Vertical.Center,
     public val labelRotationDegrees: Float = 0f,
-    public val outsideRangeOffset: Float = 60f,
+    public val outsideRangeOffset: Dp = 20.dp,
   )
 
   /**

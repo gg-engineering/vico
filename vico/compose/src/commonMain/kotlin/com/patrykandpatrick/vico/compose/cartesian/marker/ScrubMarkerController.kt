@@ -41,13 +41,19 @@ import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
  *
  * @param delayMs hold duration before entering scrub mode (default 200ms)
  * @param onMarkerIndexChanged optional callback fired when marker shows/moves/dismisses.
- *   Receives (clickX, allTargetXValues). Return the X value for marker, or null to skip.
- *   If not provided, vico's internal nearest-target logic is used.
- *   Called with (null, emptyList()) on dismiss.
+ *   Receives (clickX, allTargetXValues, interaction). Return the X value for marker, or null to
+ *   skip. If not provided, vico's internal nearest-target logic is used.
+ *   Called with (null, emptyList(), null) on dismiss.
+ *
+ *   [interaction] is the gesture that caused this call, so a consumer can tell a tap from the
+ *   moves of a scrub and the release that ends it — all three arrive here otherwise
+ *   indistinguishable. It is null when nothing the user did caused the call, i.e. a programmatic
+ *   dismiss such as the one a scroll triggers.
  */
 public class ScrubMarkerController(
   public val delayMs: Long = 200L,
-  internal val onMarkerIndexChanged: ((clickX: Double?, targets: List<Double>) -> Double?)? = null,
+  internal val onMarkerIndexChanged:
+    ((clickX: Double?, targets: List<Double>, interaction: Interaction?) -> Double?)? = null,
 ) : CartesianMarkerController {
 
   /** Whether the user is currently scrubbing. Read by Modifier.kt to disable scroll. */
@@ -117,7 +123,7 @@ public class ScrubMarkerController(
     lastTargets = null
     isScrubbing = false
     hasActiveMarker = false
-    onMarkerIndexChanged?.invoke(null, emptyList())
+    onMarkerIndexChanged?.invoke(null, emptyList(), null)
   }
 
   override fun hashCode(): Int = 31 * delayMs.hashCode()
@@ -131,20 +137,22 @@ public class ScrubMarkerController(
  *
  * @param scrollState the chart's scroll state (used for scroll-dismiss in CartesianChartHostImpl)
  * @param delayMs hold duration before entering scrub mode (default 200ms)
- * @param onMarkerIndexChanged optional callback when marker shows/moves/dismisses.
+ * @param onMarkerIndexChanged optional callback when marker shows/moves/dismisses, told which
+ *   gesture caused the call. See [ScrubMarkerController].
  */
 @Composable
 public fun rememberScrubMarkerController(
   scrollState: VicoScrollState,
   delayMs: Long = 200L,
-  onMarkerIndexChanged: ((clickX: Double?, targets: List<Double>) -> Double?)? = null,
+  onMarkerIndexChanged:
+    ((clickX: Double?, targets: List<Double>, interaction: Interaction?) -> Double?)? = null,
 ): ScrubMarkerController {
   // rememberUpdatedState keeps the callback reference fresh across recompositions
   // while the controller instance stays stable (keyed on delayMs only).
   val callbackRef = rememberUpdatedState(onMarkerIndexChanged)
   return remember(delayMs) {
-    ScrubMarkerController(delayMs) { clickX, targets ->
-      callbackRef.value?.invoke(clickX, targets)
+    ScrubMarkerController(delayMs) { clickX, targets, interaction ->
+      callbackRef.value?.invoke(clickX, targets, interaction)
     }
   }
 }

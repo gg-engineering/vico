@@ -64,6 +64,20 @@ public class CartesianLayerMargins : HorizontalCartesianLayerMargins {
     this.bottom = this.bottom.coerceAtLeast(bottom.div(2))
   }
 
+  /**
+   * Ensures [top] and [bottom] are no smaller than those provided, storing them **as given**.
+   *
+   * [ensureValuesAtLeast] halves them first, which suits a caller whose content straddles the plot
+   * edge — an axis label is centred on it, so only half protrudes. Content that sits wholly
+   * outside the plot, such as a marker's label, needs all of what it asks for, and expressing that
+   * by passing double through the halving method would read as a request for twice the room and
+   * would quietly double again if that halving were ever removed. (MOB-2953)
+   */
+  public fun ensureVerticalValuesAtLeast(top: Float = this.top, bottom: Float = this.bottom) {
+    this.top = this.top.coerceAtLeast(top)
+    this.bottom = this.bottom.coerceAtLeast(bottom)
+  }
+
   /** Clears the stored values. */
   public fun clear() {
     start = 0f

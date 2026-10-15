@@ -712,13 +712,28 @@ protected constructor(
     drawingStart: Float,
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
   ) {
+    // Points are clipped to the layer, so one at the edge is cut where the plot is cut instead of
+    // being drawn whole outside it.
+    //
+    // forEachPointInBounds runs its action for a point and only then stops if that point was past
+    // the edge, so the first one outside is always drawn — deliberately, because the line has to
+    // carry on to the boundary rather than stopping at the last point inside. The line needs that;
+    // the dot on top of it does not, and without a clip the dot sat beyond the plot with nothing
+    // under it. Clipping rather than skipping keeps a point sliding in under a scroll revealed
+    // progressively. (MOB-2953)
+    canvas.save()
+    canvas.clipRect(layerBounds)
     forEachPointInBounds(
       series = series,
       drawingStart = drawingStart,
       pointInfoMap = pointInfoMap,
     ) { chartEntry, x, y, previousX, nextX ->
+      // A point at the edge is left out rather than clipped. Clipping a dot leaves a crescent,
+      // which reads as a rendering fault rather than as something sliding in — the same reason
+      // separators are excluded instead of clipped. The clip above still stands so nothing can
+      // spill past the plot, but the dot itself is skipped once its centre is outside.
       val point = line.pointProvider?.getPoint(chartEntry, seriesIndex, model.extraStore)
-      point?.draw(this, x, y)
+      if (x >= layerBounds.left && x <= layerBounds.right) point?.draw(this, x, y)
 
       line.dataLabel
         .takeIf {
@@ -762,6 +777,7 @@ protected constructor(
           )
         }
     }
+    canvas.restore()
   }
 
   protected fun CartesianDrawingContext.getMaxDataLabelWidth(

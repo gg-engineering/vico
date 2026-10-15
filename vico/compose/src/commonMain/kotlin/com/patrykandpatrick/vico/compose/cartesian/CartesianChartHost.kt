@@ -41,6 +41,7 @@ import com.patrykandpatrick.vico.compose.common.Defaults.CHART_HEIGHT
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
@@ -76,7 +77,28 @@ public fun CartesianChartHost(
 ) {
   val mutableRanges = remember { MutableCartesianChartRanges() }
   val modelWrapper by modelProducer.collectAsState(chart, animationSpec, animateIn, mutableRanges)
-  val (model, previousModel, initialRanges, extraStore) = modelWrapper
+  // The producer's ranges are deliberately ignored — see below.
+  val (model, previousModel, _, extraStore) = modelWrapper
+
+  // Ranges are a function of two things — the model, and the chart's range providers — but the
+  // producer only ever computes them when a model is pushed. A window that arrives after that
+  // push (the common case when it is derived from the data that triggered the push) would then
+  // never reach the chart: it would keep serving the domain captured at push time, drawing its
+  // data far off-canvas, until some unrelated push happened to recompute them.
+  //
+  // Recomputing here makes the chart follow its providers. `chart` is the key because a provider
+  // change arrives as a new chart instance, and `copy` keeps the id, so nothing else notices.
+  val hostRanges = remember { MutableCartesianChartRanges() }
+  val initialRanges =
+    remember(chart, model) {
+      if (model == null) {
+        CartesianChartRanges.Empty
+      } else {
+        hostRanges.reset()
+        chart.updateRanges(hostRanges, model)
+        hostRanges.toImmutable()
+      }
+    }
 
   // Scroll-aware range: wrap initialRanges with animated Y values.
   // Two separate vars instead of Pair to avoid boxing/allocation per animation frame.
@@ -244,6 +266,24 @@ internal fun CartesianChartHostImpl(
       (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
     }
   }
+  // Every window the draw pass sees, for the marker's resting content. Kept apart from the
+  // ScrollAwareRangeProvider feed below, which only exists when a layer has such a provider —
+  // a marker's resting label is drawn whatever the layers happen to be configured with.
+  val visibleXRanges = remember { MutableSharedFlow<ClosedFloatingPointRange<Double>>(replay = 1, extraBufferCapacity = 8) }
+
+  // Keyed on the model too, not the scroll alone. The window is one of the things the resting
+  // text is formatted from and the caller's own state is another, and new data can change the
+  // second without touching the first — a card whose text names the week its entries fall in
+  // would go on naming the old one. Restarting replays the last window, so it re-formats.
+  LaunchedEffect(chart.marker, visibleXRanges, model) {
+    val marker = chart.marker ?: return@LaunchedEffect
+    // The first window as soon as there is one, so the resting text is on the opening frame
+    // rather than a debounce late; thereafter only once the scroll has come to rest. The same
+    // first-then-debounced pair ScrollAwareRangeEffect uses.
+    marker.onScrollSettled(visibleXRanges.first())
+    visibleXRanges.debounce(MARKER_SETTLE_MS).collect(marker::onScrollSettled)
+  }
+
   var lastEmittedScroll by remember { ValueWrapper(Float.NaN) }
   var lastEmittedXSpacing by remember { ValueWrapper(Float.NaN) }
   var lastEmittedChartWidth by remember { ValueWrapper(Float.NaN) }
@@ -297,7 +337,7 @@ internal fun CartesianChartHostImpl(
                 // Even when narrowedTargets is empty (no data points in window),
                 // consumer can still handle it (e.g., snap to nearest label).
                 val allTargetXValues = chart.allMarkerTargetXValues
-                val userMarkerX = scrubCallback(x, allTargetXValues)
+                val userMarkerX = scrubCallback(x, allTargetXValues, interaction)
                 if (userMarkerX != null) {
                   markerX = userMarkerX
                   markerSeriesIndex = seriesIndex
@@ -307,7 +347,7 @@ internal fun CartesianChartHostImpl(
                 }
               } else {
                 // Dismiss — notify consumer
-                scrubCallback(null, emptyList())
+                scrubCallback(null, emptyList(), interaction)
                 markerX = null
                 markerSeriesIndex = null
               }
@@ -400,9 +440,12 @@ internal fun CartesianChartHostImpl(
     zoomState.update(measuringContext.value, layerDimensions, chart.layerBounds, scrollState.value)
     scrollState.update(measuringContext.value, chart.layerBounds, layerDimensions)
 
-    // Emit scroll info to ScrollAwareRangeProviders (cached list, deduplicated).
-    // Always emit — the collector-side skips during snap animation.
-    if (scrollAwareProviders.isNotEmpty() && layerDimensions.xSpacing > 0f && !chart.layerBounds.isEmpty) {
+    // The window, for everything that settles off it: the layers' Y range and the marker's
+    // resting text. Computed once, behind the same guard, and only when the viewport has
+    // actually moved — the draw pass runs for reasons that leave it untouched.
+    // The collector side skips during snap animation.
+    val wantsWindow = scrollAwareProviders.isNotEmpty() || chart.marker != null
+    if (wantsWindow && layerDimensions.xSpacing > 0f) {
       val sp = scrollState.value
       val xs = layerDimensions.xSpacing
       val cw = chart.layerBounds.width
@@ -410,14 +453,17 @@ internal fun CartesianChartHostImpl(
         lastEmittedScroll = sp
         lastEmittedXSpacing = xs
         lastEmittedChartWidth = cw
-        // Compute visible X range from real chart ranges (not estimated)
+        // Computed from real chart ranges (not estimated)
         val visibleRange = measuringContext.value.getVisibleXRange(
           layerDimensions, chart.layerBounds, scrollState.value,
         )
-        val scrollInfo = ScrollAwareRangeProvider.ScrollInfo(
-          sp, xs, cw, visibleRange.start, visibleRange.endInclusive,
-        )
-        scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+        if (chart.marker != null) visibleXRanges.tryEmit(visibleRange)
+        if (scrollAwareProviders.isNotEmpty()) {
+          val scrollInfo = ScrollAwareRangeProvider.ScrollInfo(
+            sp, xs, cw, visibleRange.start, visibleRange.endInclusive,
+          )
+          scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+        }
       }
     }
 
@@ -461,6 +507,14 @@ private fun CartesianChartHostBox(modifier: Modifier, content: @Composable BoxSc
  * - NaN sentinel for uninitialized state (prevents premature animation)
  * - key(provider) ensures correct Compose state tracking per provider identity
  */
+/**
+ * How long the scroll must be still before the marker's resting content is told the window.
+ *
+ * The same figure [ScrollAwareRangeProvider] settles its Y range on, so the text beside the chart
+ * and the axis it describes come to rest together.
+ */
+private const val MARKER_SETTLE_MS = 100L
+
 @OptIn(FlowPreview::class)
 @Composable
 private fun ScrollAwareRangeEffect(
