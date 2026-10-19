@@ -168,7 +168,7 @@ public class CartesianChartModelProducer {
    *   the new data is applied instantly without interpolation.
    */
   public suspend fun runTransaction(animate: Boolean = true, block: Transaction.() -> Unit) {
-    withContext(Dispatchers.Default) { Transaction(animate).also(block).commit() }
+    withContext(getDispatcher()) { Transaction(animate).also(block).commit() }
   }
 
   /** Handles data updates. This is used via [runTransaction]. */
@@ -231,10 +231,19 @@ public class CartesianChartModelProducer {
 
   private suspend fun getDispatcher(): CoroutineDispatcher {
     val context = currentCoroutineContext()
-    return if (context[PreviewContextKey] != null) Dispatchers.Unconfined else Dispatchers.Default
+    return if (context[InlineUpdateContextKey] != null) Dispatchers.Unconfined
+    else Dispatchers.Default
   }
 }
 
-internal object PreviewContextKey : CoroutineContext.Key<PreviewContext>
+internal object InlineUpdateContextKey : CoroutineContext.Key<InlineUpdateContext>
 
-internal object PreviewContext : AbstractCoroutineContextElement(PreviewContextKey)
+/**
+ * Runs data updates on the calling coroutine rather than [Dispatchers.Default].
+ *
+ * Previews use it because they have no frame clock to await. Tests use it because a virtual-time
+ * scheduler cannot drain a real dispatcher: without it, a test that advances until idle resumes
+ * while an update is still in flight on the default pool, and whether it observes the result comes
+ * down to how fast the machine is.
+ */
+public object InlineUpdateContext : AbstractCoroutineContextElement(InlineUpdateContextKey)

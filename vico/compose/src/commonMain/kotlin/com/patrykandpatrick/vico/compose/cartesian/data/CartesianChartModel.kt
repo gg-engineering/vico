@@ -233,4 +233,4 @@ private fun LaunchRegistration(
 }
 
 private fun getCoroutineContext(isPreview: Boolean): CoroutineContext =
-  if (isPreview) Dispatchers.Unconfined + PreviewContext else EmptyCoroutineContext
+  if (isPreview) Dispatchers.Unconfined + InlineUpdateContext else EmptyCoroutineContext
