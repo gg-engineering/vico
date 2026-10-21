@@ -58,6 +58,20 @@ public class ScrollAwareRangeProvider(
     val maxX: Double = Double.NaN,
     val seedMinY: Double = Double.NaN,
     val seedMaxY: Double = Double.NaN,
+    /**
+     * The slice the chart opens on — not [minX]..[maxX], which is the whole scrollable domain.
+     *
+     * Supplied so the opening axis can be derived here, from the entries that first frame will
+     * show. The caller does not send an axis: it would have to compute one, and a second
+     * implementation of that is what made the axis re-letter itself once the data landed.
+     *
+     * Err wide rather than narrow. The measured viewport opens behind a reserved inset whose
+     * width is pixels, so no caller can know it exactly; a point drawn inside the opening window
+     * but left out of its range runs off the plot, while an extra point only loosens the range
+     * until the first scroll.
+     */
+    val openStartX: Double = Double.NaN,
+    val openEndX: Double = Double.NaN,
   )
 
   public companion object {
@@ -77,6 +91,9 @@ public class ScrollAwareRangeProvider(
 
   private fun windowFromExtras(extraStore: ExtraStore): Window? =
     windowKey?.let { key -> extraStore.getOrNull(WindowKey)?.get(key) }
+
+  /** The window this provider's data arrived with, for the host to tell a move from a redraw. */
+  internal fun openingWindow(extraStore: ExtraStore): Window? = windowFromExtras(extraStore)
 
   init {
     require(paddingEntries >= 0) { "paddingEntries must be >= 0" }
@@ -113,9 +130,50 @@ public class ScrollAwareRangeProvider(
   // Whether entries have been loaded at least once.
   internal var isCacheReady: Boolean = false
 
-  // Current tick labels — read by ListItemPlacer.
+  // What the cache and the opening range were built from. The chart's identity changes on
+  // recompositions that have nothing to do with the data, and rebuilding on those would throw
+  // away a range the user had scrolled to and replace it with the opening one. These are kept
+  // apart because a model copied for a new ExtraStore carries the same series instance: the
+  // cache can stand while the window moves, and the window can stand while the data changes.
+  internal var cachedSeries: Any? = null
+  internal var cachedWindow: Window? = null
+
+  // Current tick labels — read by ListItemPlacer through [ticks].
   public var currentTicks: List<Double> = emptyList()
     internal set
+
+  /**
+   * Derives the opening range and gridlines from the window the data arrived with, before
+   * anything has been drawn.
+   *
+   * This is the whole reason the range has one producer. The chart cannot wait for its own first
+   * draw to decide what to draw — the entry cache is filled here but the visible window is only
+   * reported from inside the Canvas — so without this a caller had to compute an opening axis
+   * itself, and two implementations of the same arithmetic over slightly different entries is
+   * exactly how the axis came to re-letter itself a moment after the data appeared. The callback
+   * that answers every later scroll answers the first one too.
+   *
+   * Leaves the range untouched when there is no opening window or nothing falls inside it, so
+   * the chart measures it the way it did before.
+   */
+  internal fun seedFromWindow(extraStore: ExtraStore) {
+    val window = windowFromExtras(extraStore) ?: return
+    val start = window.openStartX
+    val end = window.openEndX
+    if (start.isNaN() || end.isNaN() || end <= start) return
+    val info = ScrollInfo(
+      scrollPixels = 0f,
+      xSpacing = 1f,
+      chartWidth = 0f,
+      visibleXStart = start,
+      visibleXEnd = end,
+    )
+    val entries = computeVisibleEntries(info) ?: return
+    val (range, ticks) = computeDisplayRange(entries, start..end) ?: return
+    currentMinY = range.start
+    currentMaxY = range.endInclusive
+    currentTicks = ticks
+  }
 
   // Flow for scroll updates — CartesianChartHost emits to this.
   internal val scrollUpdates = MutableSharedFlow<ScrollInfo>(replay = 1, extraBufferCapacity = 10)
@@ -151,11 +209,16 @@ public class ScrollAwareRangeProvider(
    * Called when the model structure changes.
    */
   internal fun buildCache(series: List<List<LineCartesianLayerModel.Entry>>) {
+    // Cleared first, on every path: this model's own ticks win until it has settled ones of its
+    // own, and an empty push must not leave the previous model's drawn against the new data.
+    currentTicks = emptyList()
+    lastVisibleStartIndex = -1
+    lastVisibleEndIndex = -1
+    lastVisibleEntries = emptyList()
     if (series.isEmpty() || series.first().isEmpty()) {
       allSeriesEntries = emptyList()
       sortedXValues = DoubleArray(0)
       isCacheReady = false
-      lastVisibleStartIndex = -1
       return
     }
     // Store each series separately, sorted by X
@@ -169,7 +232,6 @@ public class ScrollAwareRangeProvider(
     }
     sortedXValues = allX.toDoubleArray().also { it.sort() }
     isCacheReady = true
-    lastVisibleStartIndex = -1
   }
 
   /**

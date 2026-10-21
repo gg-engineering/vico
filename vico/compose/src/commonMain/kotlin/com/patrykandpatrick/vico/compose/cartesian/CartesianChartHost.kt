@@ -94,6 +94,33 @@ public fun CartesianChartHost(
       if (model == null) {
         CartesianChartRanges.Empty
       } else {
+        // The opening range is derived here, before the first frame, because this is where the
+        // ranges that frame draws with are decided. Deriving it a frame later left updateRanges
+        // below with no opinion to ask for, so the chart opened on the whole dataset's extent and
+        // then replaced it — and deriving it in the caller instead meant two selections of
+        // entries that could disagree. One caller, one selection: the provider's own.
+        // Paired by position. indexOf matched on equals, so two layers configured alike both
+        // resolved to models[0] and the second drew against the first one's range.
+        chart.layers.forEachIndexed { index, layer ->
+          val provider = (layer as? LineCartesianLayer)?.internalRangeProvider
+            as? ScrollAwareRangeProvider ?: return@forEachIndexed
+          val series = (model.models.getOrNull(index)
+            as? LineCartesianLayerModel)?.series ?: return@forEachIndexed
+          // Once per model, not once per chart identity: rebuilding the cache resets the ticks,
+          // and re-seeding would discard a range the user had scrolled to. The two are asked
+          // separately because a model copied for new extras keeps its series instance — that
+          // push moves the window without touching the data, and used to re-sort all of it.
+          val seriesChanged = provider.cachedSeries !== series
+          if (seriesChanged) {
+            provider.cachedSeries = series
+            provider.buildCache(series)
+          }
+          val window = provider.openingWindow(model.extraStore)
+          if (seriesChanged || provider.cachedWindow != window) {
+            provider.cachedWindow = window
+            provider.seedFromWindow(model.extraStore)
+          }
+        }
         hostRanges.reset()
         chart.updateRanges(hostRanges, model)
         hostRanges.toImmutable()
@@ -547,13 +574,11 @@ private fun ScrollAwareRangeEffect(
     val animMaxY = remember { Animatable(Float.NaN) }
     var isFirstScrollUpdate by remember { mutableStateOf(true) }
 
-    // Rebuild cache on every model change (including Y value changes like metric switch).
-    // LaunchedEffect restarts → waits for scroll info → recomputes with fresh cache.
+    // The cache and the opening range are built during composition, above — this measures the
+    // window the chart actually opened on and corrects the range if it differs.
     // Animatables are NOT reset — they animate from old range to new range.
     LaunchedEffect(model) {
-      val layerModel = model.models.getOrNull(layerIndex) as? LineCartesianLayerModel
-        ?: return@LaunchedEffect
-      provider.buildCache(layerModel.series)
+      model.models.getOrNull(layerIndex) as? LineCartesianLayerModel ?: return@LaunchedEffect
 
       // Wait for first Canvas draw to provide visible-window scroll info.
       isFirstScrollUpdate = true
