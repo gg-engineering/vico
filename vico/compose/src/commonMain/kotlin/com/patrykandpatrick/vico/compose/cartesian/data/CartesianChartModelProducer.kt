@@ -39,9 +39,13 @@ public class CartesianChartModelProducer {
   private val _isReady = MutableStateFlow(false)
 
   /**
-   * True after the first successful [runTransaction] produces a non-null model.
-   * Consumers collect this to know when the chart has data and is ready to render
-   * (e.g., to dismiss a shimmer/skeleton loading state).
+   * True once the first successful [runTransaction] has produced a non-null model, and true from
+   * then on.
+   *
+   * A latch, not a current state: it never returns to false, so a later transaction that is still
+   * in flight does not report the chart as unready. Consumers use it to dismiss a first-paint
+   * skeleton, which is a thing that happens once. Reading it as "a model is ready right now" and
+   * bringing a skeleton back on every reload is what it will not support.
    */
   public val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
 
