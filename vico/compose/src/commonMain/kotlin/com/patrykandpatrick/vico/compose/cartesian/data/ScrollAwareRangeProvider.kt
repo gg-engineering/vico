@@ -45,7 +45,7 @@ public class ScrollAwareRangeProvider(
   internal val animDurationMs: Int = Animation.RANGE_ANIM_DURATION,
   private val windowKey: String? = null,
   private val onVisibleEntries: (visibleEntries: List<List<Pair<Double, Double>>>, visibleXRange: ClosedRange<Double>) -> Pair<ClosedRange<Double>, List<Double>>,
-) : CartesianLayerRangeProvider {
+) : CartesianLayerRangeProvider, WindowSettleSignal {
 
   /**
    * A chart's bounds, as supplied alongside the data rather than beside it.
@@ -142,6 +142,9 @@ public class ScrollAwareRangeProvider(
   public var currentTicks: List<Double> = emptyList()
     internal set
 
+  override var settleEpoch: Int = 0
+    internal set
+
   /**
    * Derives the opening range and gridlines from the window the data arrived with, before
    * anything has been drawn.
@@ -209,18 +212,24 @@ public class ScrollAwareRangeProvider(
    * Called when the model structure changes.
    */
   internal fun buildCache(series: List<List<LineCartesianLayerModel.Entry>>) {
-    // Cleared first, on every path: this model's own ticks win until it has settled ones of its
-    // own, and an empty push must not leave the previous model's drawn against the new data.
-    currentTicks = emptyList()
     lastVisibleStartIndex = -1
     lastVisibleEndIndex = -1
     lastVisibleEntries = emptyList()
     if (series.isEmpty() || series.first().isEmpty()) {
+      // Only here. With nothing to draw them against, the previous model's ticks must not stay.
+      currentTicks = emptyList()
       allSeriesEntries = emptyList()
       sortedXValues = DoubleArray(0)
       isCacheReady = false
       return
     }
+    // Deliberately NOT cleared on a push that carries data. The ticks are what the reader is
+    // reading, and between a push and the first window measured from it there is nothing to put
+    // in their place — so clearing them drew an axis with no labels at all. A second line sharing
+    // this provider made that routine: changing it replaces the series instance, which lands
+    // here, so picking a different secondary metric blanked the primary metric's axis. The
+    // previous ticks stand for that one frame and are replaced below, or by the first scroll
+    // update, with ones measured from this data.
     // Store each series separately, sorted by X
     allSeriesEntries = series.map { s ->
       s.sortedBy { it.x }.map { it.x to it.y }

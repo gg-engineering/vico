@@ -45,6 +45,7 @@ import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerDrawin
 import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.data.ScrollAwareRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.WindowSettleSignal
 import com.patrykandpatrick.vico.compose.cartesian.data.forEachIn
 import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.Interpolator.Companion.catmullRom
@@ -848,16 +849,20 @@ protected constructor(
       // the previous window's scaling — a visible kink in the line that nothing later invalidated,
       // so it stayed until some unrelated change happened to move one of the other two keys.
       //
-      // Keyed on which entries are in view rather than on the window's own bounds: that is what
-      // such a transform actually reads, so a scroll that moves the window without admitting or
-      // dropping a point leaves the key alone, and the line does not rescale under the finger.
-      val windowKey = visibleEntryKey(series, getVisibleXRange())
+      // Keyed on the settle rather than on the window itself. The window moves every frame of a
+      // scroll, and recomputing on that rescales the line continuously under the finger. The
+      // provider counts settles instead, so this fires once, when the scroll stops, alongside the
+      // axis animation the primary layer is already following.
+      val windowKey = (rangeProvider as? WindowSettleSignal)?.settleEpoch?.toLong() ?: 0L
       val windowChanged = transformLastWindowKey != null && transformLastWindowKey != windowKey
 
-      // First compute, series changed or window changed → snap (no fade)
-      if (transformCacheResult == null || seriesChanged || windowChanged) {
+      // First compute, or the data itself changed → snap. Against the range the chart is heading
+      // for, never the one it is leaving: a settle starts the axis animating, so at this moment
+      // `yRange` is still the old range. Mapping against it leaves the line where the old axis
+      // put it while the axis moves out from under it, which puts the line off the plot.
+      if (transformCacheResult == null || seriesChanged) {
         val visibleXRange = getVisibleXRange()
-        transformCacheResult = yTransform.invoke(series, yRange, visibleXRange)
+        transformCacheResult = yTransform.invoke(series, targetYRange, visibleXRange)
         transformIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
         transformLastSeriesKey = seriesKey
         transformLastTargetKey = targetKey
@@ -866,15 +871,23 @@ protected constructor(
         transformFadeOpacity = 1f
       }
 
-      // Target changed → recompute with TARGET yRange + fade
-      if (targetKey != transformLastTargetKey && transformFadePhase == 0) {
+      // The basis moved — a new target range, a settled window, or both. One path for both, so a
+      // settled window cannot mark the target as handled and skip the recompute that follows it.
+      if ((targetKey != transformLastTargetKey || windowChanged) && transformFadePhase == 0) {
         val visibleXRange = getVisibleXRange()
-        transformPendingResult = yTransform.invoke(series, targetYRange, visibleXRange)
-        transformPendingIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
+        val pending = yTransform.invoke(series, targetYRange, visibleXRange)
         transformLastTargetKey = targetKey
         transformLastWindowKey = windowKey
-        transformFadePhase = 1
-        transformFadeStart = TimeSource.Monotonic.markNow()
+        // Only fade when the fade would show something. A settled window that admits no new
+        // readings produces the same values it already had, and fading between two identical
+        // results is a flicker with nothing behind it — which every scroll that stayed inside one
+        // scale would otherwise do.
+        if (pending != null && !pending.contentEquals(transformCacheResult)) {
+          transformPendingResult = pending
+          transformPendingIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
+          transformFadePhase = 1
+          transformFadeStart = TimeSource.Monotonic.markNow()
+        }
       }
 
       // Fade state machine
@@ -1333,36 +1346,3 @@ public fun LineCartesianLayer.Companion.rememberLine(
     dataLabelRotationDegrees,
   )
 
-/**
- * Identifies the slice of [series] that [visibleXRange] admits, for cache keys.
- *
- * The set of visible entries, not the window's own bounds: a `yTransform` reads the window only to
- * decide which entries it is scaling against, so two windows holding the same entries produce the
- * same output and must not recompute. Scrolling a chart therefore rescales once per point crossed
- * rather than once per frame.
- *
- * Binary searched because the series is sorted by x and can hold years of daily readings.
- */
-internal fun visibleEntryKey(
-  series: List<LineCartesianLayerModel.Entry>,
-  visibleXRange: ClosedFloatingPointRange<Double>,
-): Long {
-  val first = series.boundIndex(visibleXRange.start, inclusive = true)
-  val last = series.boundIndex(visibleXRange.endInclusive, inclusive = false) - 1
-  return first.toLong() * 31 + last
-}
-
-/**
- * Index of the first entry past [x] — counting one exactly at [x] as past it when [inclusive], so
- * the same search serves both ends of a closed range. Returns `size` when no entry is past [x].
- */
-private fun List<LineCartesianLayerModel.Entry>.boundIndex(x: Double, inclusive: Boolean): Int {
-  var low = 0
-  var high = size
-  while (low < high) {
-    val mid = (low + high) / 2
-    val before = if (inclusive) this[mid].x < x else this[mid].x <= x
-    if (before) low = mid + 1 else high = mid
-  }
-  return low
-}

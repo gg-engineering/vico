@@ -42,6 +42,7 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
@@ -115,8 +116,15 @@ public fun CartesianChartHost(
             provider.cachedSeries = series
             provider.buildCache(series)
           }
+          // Seeded when the window moved, or when there is no settled axis to keep — never
+          // merely because the series changed. The seed describes the window the chart OPENS on,
+          // so re-seeding on any push dragged the axis back there from wherever the user had
+          // scrolled: the labels jumped to the opening window's and then back to the real ones a
+          // frame later, when the first draw reported the window actually in view. Two tick sets
+          // per push, which is what the blink on changing a second metric was — that push moves
+          // the series and leaves the window exactly where it was.
           val window = provider.openingWindow(model.extraStore)
-          if (seriesChanged || provider.cachedWindow != window) {
+          if (provider.cachedWindow != window || provider.currentTicks.isEmpty()) {
             provider.cachedWindow = window
             provider.seedFromWindow(model.extraStore)
           }
@@ -615,25 +623,42 @@ private fun ScrollAwareRangeEffect(
       isFirstScrollUpdate = false
     }
 
-    // Subsequent scroll events: debounced + animated (iOS-like).
+    // Subsequent scroll events: debounced, so the axis moves once, after the scroll settles.
+    //
+    // Deliberately not sampled during the scroll. Recomputing as the window moves makes the axis
+    // and every line keyed to it shift continuously under the finger, which reads as the chart
+    // dancing rather than as it being responsive. One settled correction, animated, is the
+    // behaviour this is meant to have.
     LaunchedEffect(provider) {
       provider.scrollUpdates
         .debounce(provider.debounceMs)
-        .collect { scrollInfo ->
-          if (!provider.isCacheReady || isFirstScrollUpdate) return@collect
-          if (animMinY.value.isNaN()) return@collect
+        // collectLatest, not collect: the block waits out a 300 ms animation, and a second
+        // settle can land inside that. Cancelling leaves the animatables wherever they reached
+        // and the next animation continues from there, rather than queueing behind the old one.
+        .collectLatest { scrollInfo ->
+          if (!provider.isCacheReady || isFirstScrollUpdate) return@collectLatest
+          if (animMinY.value.isNaN()) return@collectLatest
 
-          val visibleEntries = provider.computeVisibleEntries(scrollInfo) ?: return@collect
+          val visibleEntries = provider.computeVisibleEntries(scrollInfo) ?: return@collectLatest
           val xRange = scrollInfo.visibleXStart..scrollInfo.visibleXEnd
-          val result = provider.computeDisplayRange(visibleEntries, xRange) ?: return@collect
+          val result = provider.computeDisplayRange(visibleEntries, xRange) ?: return@collectLatest
           val (range, newTicks) = result
           val targetMinY = range.start.toFloat()
           val targetMaxY = range.endInclusive.toFloat()
 
-          if (abs(targetMinY - animMinY.value) < 0.01f &&
-            abs(targetMaxY - animMaxY.value) < 0.01f) return@collect
+          // Announced before the no-movement check below, not after it. A layer that transforms
+          // its series against the window has to recompute on every settle, including the ones
+          // that leave the y range exactly where it was — scrolling between two windows that
+          // happen to share an axis is precisely when it would otherwise keep a scaling that
+          // belonged to the window the user has left.
+          provider.settleEpoch++
 
-          // iOS cross-fade approximation: swap ticks instantly
+          if (abs(targetMinY - animMinY.value) < 0.01f &&
+            abs(targetMaxY - animMaxY.value) < 0.01f) return@collectLatest
+
+          // Swapped as the animation starts, not when it ends: a tick is a data value, drawn at
+          // whatever pixel the currently animating range puts it at, so it slides into place
+          // rather than appearing there. Held back to the end it would pop instead.
           provider.currentTicks = newTicks
           onTargetRange(targetMinY.toDouble(), targetMaxY.toDouble())
 
