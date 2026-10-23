@@ -32,6 +32,27 @@ public interface CartesianMarker : CartesianLayerMarginUpdater<CartesianChartMod
   /** Draws content over the [CartesianLayer]s. */
   public fun drawOverLayers(context: CartesianDrawingContext, targets: List<Target>) {}
 
+  /**
+   * Draws what stands on the marker's line while nothing is marked.
+   *
+   * The marker's label occupies a line of its own outside the plot, and the chart is the only
+   * thing that knows where that line is. A caller wanting to put its own text there — a date range
+   * describing the window, say — otherwise has to guess the position from outside and blank its
+   * text whenever a marker appears, because the two would collide. Drawing it here means the
+   * chart hands the line to whichever of the two is live. (MOB-2953)
+   */
+  public fun drawResting(context: CartesianDrawingContext) {}
+
+  /**
+   * Reports the _x_ range in view once scrolling has stopped.
+   *
+   * [drawResting] describes the window rather than the data, and a window read per frame churns
+   * through every one the scroll passes over on its way to the one the user stops at. The chart
+   * calls this when the scroll settles, so the resting content can hold still until then.
+   * (MOB-2953)
+   */
+  public fun onScrollSettled(visibleXRange: ClosedFloatingPointRange<Double>) {}
+
   /** Houses information on an object to be marked. */
   public interface Target {
     /** The _x_ value. */

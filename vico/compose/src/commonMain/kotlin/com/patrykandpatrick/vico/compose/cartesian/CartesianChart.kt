@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.geometry.Rect
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChart.PersistentMarkerScope
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
@@ -65,6 +67,7 @@ internal constructor(
   protected val persistentMarkers: (PersistentMarkerScope.(ExtraStore) -> Unit)? = null,
   protected val getXStep: ((CartesianChartModel) -> Double) = { it.getXDeltaGcd() },
   public val visibleLabelsCount: Double = 0.0,
+  public val startInsetDp: Dp = 0.dp,
   public val markerController: CartesianMarkerController = CartesianMarkerController.showOnPress(),
   internal val id: Uuid = Uuid.random(),
   private var previousMarkerTargetHashCode: Int? = null,
@@ -279,21 +282,37 @@ internal constructor(
 
       // Apply spacing adjustment for visible labels if specified (after layerBounds is set)
       if (visibleLabelsCount > 0) {
-        val scaleFactor = calculateLabelSpacingScale(layerDimensions)
+        val scaleFactor = calculateLabelSpacingScale(layerDimensions, startInsetDp.pixels)
         if (scaleFactor != 1f) {
           layerDimensions.scale(scaleFactor)
         }
+      }
+
+      // Room before the first entry, as a length. Unscalable, so zooming moves the data under a
+      // margin that stays put rather than stretching it.
+      //
+      // Reserved here rather than asked for through the scroll offset, which cannot work: the
+      // scroll clamps at zero, so at the start of the chart there is nothing behind the first
+      // entry to scroll into and the gap collapses. getFullXRange extends the scrollable range
+      // back by startPadding, so reserving it makes the space real at every position. (MOB-2953)
+      if (startInsetDp > 0.dp) {
+        layerDimensions.ensureValuesAtLeast(unscalableStartPadding = startInsetDp.pixels)
       }
     }
   }
 
   private fun calculateLabelSpacingScale(
     layerDimensions: MutableCartesianLayerDimensions,
+    startInsetPx: Float,
   ): Float {
     val availableWidth = layerBounds.width
     val currentSpacing = layerDimensions.xSpacing
     if (currentSpacing <= 0f || availableWidth <= 0f) return 1f
-    val desiredSpacing = availableWidth / visibleLabelsCount
+    // The window holds the labels asked for plus the space reserved before the first entry, since
+    // that space is inside it. As a length it comes off the width rather than into the denominator;
+    // leaving it out over-spaces the labels by exactly the gap and pushes the last one off the
+    // edge. (MOB-2953)
+    val desiredSpacing = (availableWidth - startInsetPx) / visibleLabelsCount
     return (desiredSpacing / currentSpacing).toFloat()
   }
 
@@ -305,31 +324,92 @@ internal constructor(
   internal fun draw(context: CartesianDrawingContext) {
     drawingContext = context
     with(context) {
+      // Nothing is painted in the strip reserved before the first entry.
+      //
+      // Held around each group that describes the data rather than around the method: the line and
+      // points go through layerBitmap, while the guidelines, separators, ticks and axis lines are
+      // drawn straight onto the canvas before and after it, so clipping the bitmap alone left all
+      // of those painting into the strip.
+      //
+      // What it is deliberately NOT held around is the layers, the markers, the decorations or the
+      // legend. The layers draw from the first entry onwards, so they put nothing in the strip to
+      // begin with. A marker is an overlay on a point the user picked, and a picked point is inside
+      // the chart already. Both sit on the strip's edge at the first entry and reach back over it —
+      // the point by its radius, the marker by its bubble — so clipping them cut each in half, and
+      // on a chart that does not scroll the clip is on permanently and the marker never appeared at
+      // all. That holds for a persistent marker exactly as it does for the active one.
+      //
+      // A decoration describes the chart rather than the strip's contents: a goal line spans the
+      // plot, so clipping it stopped the line short of the start axis and left a gap against the
+      // very edge the axis line marks.
+      //
+      // The space itself is untouched. The layer keeps its width and the chart is measured against
+      // the same bounds as ever; this governs only what is visible there. Once scrolled past, the
+      // strip is behind the layer's left edge and none of it applies. (MOB-2953)
+      val contentStart = layerBounds.left + layerDimensions.startPadding - scroll
+      val hidesStrip = startInsetDp > 0.dp && contentStart > layerBounds.left
+
+      fun clippedToChart(block: () -> Unit) {
+        if (!hidesStrip) {
+          block()
+          return
+        }
+        canvas.save()
+        canvas.clipRect(contentStart, 0f, canvasSize.width, canvasSize.height)
+        block()
+        canvas.restore()
+      }
+
       if (fadingEdges != null) canvas.saveLayer(Rect(Offset.Zero, canvasSize), EmptyPaint)
+
+      // Stacking, bottom to top: guidelines, separators, axis, marker, point.
+      //
+      // The data goes on top of the furniture that describes it. The layers used to be composited
+      // before the axes' over-layer pass and before the marker, so an axis line and a marker drew
+      // over the very point they refer to.
       decorations.forEach { it.drawUnderLayers(context) }
-      axisManager.drawUnderLayers(context)
+      clippedToChart { axisManager.drawUnderLayers(context) }
+      // The start axis's line marks where the chart begins, so it belongs in the strip the rest was
+      // kept out of.
+      if (hidesStrip) axisManager.drawStartAxisLine(context)
+      clippedToChart { axisManager.drawOverLayers(context) }
+      decorations.forEach { it.drawOverLayers(context) }
+
       val (layerBitmap, layerCanvas) = getBitmap(cacheKeyNamespace)
       withCanvas(layerCanvas) {
         model.forEachWithLayer(drawingConsumer.apply { this.context = context })
       }
       // TreeMap keeps _markerTargets sorted by key — no per-frame sort needed
-      forEachPersistentMarker { marker, targets -> marker.drawUnderLayers(context, targets) }
+      forEachPersistentMarker { marker, targets ->
+        marker.drawUnderLayers(context, targets)
+        marker.drawOverLayers(context, targets)
+      }
       val markerTargets = getMarkerTargets(markerX, markerSeriesIndex).ifEmpty {
         // If markerX doesn't match a data point, synthesize an interpolated target
         markerX?.let { synthesizeInterpolatedTargets(context, it) } ?: emptyList()
       }
       val drawMarker = markerTargets.isNotEmpty()
-      if (drawMarker) marker?.drawUnderLayers(context, markerTargets)
+      if (drawMarker) {
+        marker?.drawUnderLayers(context, markerTargets)
+        marker?.drawOverLayers(context, markerTargets)
+      }
+      // Last, and not clipped. The layers draw from the first entry onwards, so they put nothing in
+      // the strip — and the strip ends exactly on that entry, so clipping only sliced its point in
+      // half. Composited inside the fading-edge layer so the fade still reaches them.
       canvas.drawImage(layerBitmap, Offset.Zero, EmptyPaint)
       fadingEdges?.run {
         draw(context)
         canvas.restore()
       }
-      axisManager.drawOverLayers(context)
-      decorations.forEach { it.drawOverLayers(context) }
-      forEachPersistentMarker { marker, targets -> marker.drawOverLayers(context, targets) }
+      // Past the fading-edge layer, so the goal pill is bounded by nothing — the same freedom the
+      // marker's final pass below has always had. A pill pinned outside the visible range sits
+      // beyond the plot by design, and the layer's bounds used to slice whatever hung past the
+      // canvas. Drawing it here means no chart has to reserve room for it. (MOB-2953)
+      axisManager.drawMarkerDecorations(context)
       legend?.draw(context)
-      if (drawMarker) marker?.drawOverLayers(context, markerTargets)
+      // The marker's label line carries one or the other: the marker's own label while a point is
+      // marked, the marker's resting text the rest of the time.
+      if (drawMarker) marker?.drawOverLayers(context, markerTargets) else marker?.drawResting(context)
     }
     drawingContext = null
   }
@@ -545,6 +625,7 @@ internal constructor(
     persistentMarkers: (PersistentMarkerScope.(ExtraStore) -> Unit)? = this.persistentMarkers,
     getXStep: ((CartesianChartModel) -> Double) = this.getXStep,
     visibleLabelsCount: Double = this.visibleLabelsCount,
+    startInsetDp: Dp = this.startInsetDp,
     markerController: CartesianMarkerController = CartesianMarkerController.showOnPress(),
   ): CartesianChart =
     CartesianChart(
@@ -562,6 +643,7 @@ internal constructor(
       persistentMarkers = persistentMarkers,
       getXStep = getXStep,
       visibleLabelsCount = visibleLabelsCount,
+      startInsetDp = startInsetDp,
       markerController = markerController,
       id = id,
       previousMarkerTargetHashCode = previousMarkerTargetHashCode,
@@ -581,6 +663,7 @@ internal constructor(
         decorations == other.decorations &&
         persistentMarkers == other.persistentMarkers &&
         getXStep == other.getXStep &&
+        startInsetDp == other.startInsetDp &&
         layers == other.layers &&
         startAxis == other.startAxis &&
         topAxis == other.topAxis &&
@@ -656,6 +739,7 @@ public fun rememberCartesianChart(
   persistentMarkers: (PersistentMarkerScope.(ExtraStore) -> Unit)? = null,
   getXStep: ((CartesianChartModel) -> Double) = { it.getXDeltaGcd() },
   visibleLabelsCount: Double = 0.0,
+  startInsetDp: Dp = 0.dp,
   markerController: CartesianMarkerController = CartesianMarkerController.rememberShowOnPress(),
 ): CartesianChart {
   val wrapper = remember { ValueWrapper<CartesianChart?>(null) }
@@ -674,6 +758,7 @@ public fun rememberCartesianChart(
     persistentMarkers,
     getXStep,
     visibleLabelsCount,
+    startInsetDp,
     markerController,
   ) {
     val cartesianChart =
@@ -692,6 +777,7 @@ public fun rememberCartesianChart(
         persistentMarkers = persistentMarkers,
         getXStep = getXStep,
         visibleLabelsCount = visibleLabelsCount,
+        startInsetDp = startInsetDp,
         markerController = markerController,
       )
         ?: CartesianChart(
@@ -709,6 +795,7 @@ public fun rememberCartesianChart(
           persistentMarkers = persistentMarkers,
           getXStep = getXStep,
           visibleLabelsCount = visibleLabelsCount,
+          startInsetDp = startInsetDp,
           markerController = markerController,
         )
     wrapper.value = cartesianChart

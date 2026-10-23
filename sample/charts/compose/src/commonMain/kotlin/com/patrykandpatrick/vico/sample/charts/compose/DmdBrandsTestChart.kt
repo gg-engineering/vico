@@ -213,7 +213,7 @@ fun DmdBrandsTestChart(modifier: Modifier = Modifier) {
             ),
           ),
           label = { "170" },
-          outsideRangeOffset = 30f,
+          outsideRangeOffset = 10.dp,
         )
       ),
       // Feature 6B: Separators at data boundaries and every 50 X units

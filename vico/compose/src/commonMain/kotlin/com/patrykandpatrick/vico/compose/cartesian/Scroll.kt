@@ -60,13 +60,20 @@ public sealed interface Scroll {
        * The chart positions [x] at [paddingXStep] distance from the start edge,
        * where [paddingXStep] is in units of xStep (e.g., 0.5 = half a step from edge).
        */
-      public fun xWithPadding(x: Double, paddingXStep: Double, bias: Float = 0f): Absolute =
+      /**
+       * Scrolls so that [x] sits at the start of the visible window, behind the space the layer
+       * reserves before its first entry.
+       *
+       * [x] puts it flush against the window's edge; this leaves the reserved space showing in
+       * front of it. That space is [CartesianLayerDimensions.startPadding], which the chart sets
+       * from its own startInsetXStep, so there is nothing to pass — adding it and taking the
+       * same amount off again leaves the offset alone. It used to be passed, which only made it
+       * possible to pass a different figure from the one the chart had reserved. (MOB-2953)
+       */
+      public fun xBehindStartInset(x: Double, bias: Float = 0f): Absolute =
         Absolute { context, layerDimensions, bounds, _ ->
-          layerDimensions.startPadding +
-            ((x - context.ranges.minX) / context.ranges.xStep).toFloat() *
-              layerDimensions.xSpacing -
-            (paddingXStep * layerDimensions.xSpacing).toFloat() -
-            bias * bounds.width
+          ((x - context.ranges.minX) / context.ranges.xStep).toFloat() *
+            layerDimensions.xSpacing - bias * bounds.width
         }
     }
   }

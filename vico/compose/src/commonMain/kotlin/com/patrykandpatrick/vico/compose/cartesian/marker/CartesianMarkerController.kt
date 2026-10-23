@@ -39,6 +39,16 @@ public fun interface CartesianMarkerController {
     get() = false
 
   /**
+   * Whether the chart should claim touch gestures for this controller at all.
+   *
+   * A chart with a marker attaches a tap detector, which consumes the tap. For a controller that
+   * never marks anything that is worse than useless: it swallows the gesture on the way to
+   * whatever surrounds the chart, so a card built to be tapped stops responding.
+   */
+  public val acceptsGestures: Boolean
+    get() = true
+
+  /**
    * Indicates whether this [CartesianMarkerController] wants to respond to [interaction]. If `true`
    * is returned, [shouldShowMarker] is called; otherwise, the marker visibility remains unchanged.
    */
@@ -92,7 +102,33 @@ public fun interface CartesianMarkerController {
     public fun rememberToggleOnTap(): CartesianMarkerController = remember {
       ToggleOnTapMarkerController()
     }
+
+    /**
+     * Creates and remembers a [CartesianMarkerController] that never marks anything.
+     *
+     * For a chart that is displayed rather than explored — a small card with no gesture to mark a
+     * point with. Without it such a chart still takes the default, so a press marks a point and
+     * whatever the marker draws at rest is replaced for as long as a finger is down.
+     */
+    @Composable
+    public fun rememberNonInteractive(): CartesianMarkerController = remember {
+      NonInteractiveMarkerController
+    }
   }
+}
+
+private object NonInteractiveMarkerController : CartesianMarkerController {
+  override val acceptsGestures: Boolean = false
+
+  override fun shouldAcceptInteraction(
+    interaction: Interaction,
+    targets: List<CartesianMarker.Target>,
+  ): Boolean = false
+
+  override fun shouldShowMarker(
+    interaction: Interaction,
+    targets: List<CartesianMarker.Target>,
+  ): Boolean = false
 }
 
 private class ShowOnPressMarkerController(override val consumeMoveEvents: Boolean) :

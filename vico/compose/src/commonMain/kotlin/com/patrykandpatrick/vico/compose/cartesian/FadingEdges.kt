@@ -79,24 +79,30 @@ public open class FadingEdges(
       val maxScroll = getMaxScrollDistance()
       var fadeAlphaFraction: Float
 
-      if (scrollEnabled && startWidth.value > 0f && scroll > 0f) {
+      // Wide enough to cover the space the layer reserves before its first entry, taken from the
+      // layer itself. It used to be a second copy of that figure, passed in alongside and carried
+      // by a subclass that existed for nothing else. (MOB-2953)
+      val effectiveStartWidth = maxOf(startWidth.pixels, layerDimensions.startPadding)
+      val effectiveEndWidth = maxOf(endWidth.pixels, layerDimensions.endPadding)
+
+      if (scrollEnabled && effectiveStartWidth > 0f && scroll > 0f) {
         fadeAlphaFraction = (scroll / visibilityThreshold.pixels).coerceAtMost(1f)
 
         drawFadingEdge(
           left = layerBounds.left,
           top = layerBounds.top,
-          right = layerBounds.left + startWidth.pixels,
+          right = layerBounds.left + effectiveStartWidth,
           bottom = layerBounds.bottom,
           direction = -1,
           alpha = visibilityEasing.transform(fadeAlphaFraction),
         )
       }
 
-      if (scrollEnabled && endWidth.value > 0f && scroll < maxScroll) {
+      if (scrollEnabled && effectiveEndWidth > 0f && scroll < maxScroll) {
         fadeAlphaFraction = ((maxScroll - scroll) / visibilityThreshold.pixels).coerceAtMost(1f)
 
         drawFadingEdge(
-          left = layerBounds.right - endWidth.pixels,
+          left = layerBounds.right - effectiveEndWidth,
           top = layerBounds.top,
           right = layerBounds.right,
           bottom = layerBounds.bottom,
@@ -155,15 +161,9 @@ public fun rememberFadingEdges(
   endWidth: Dp = FadingEdgesDefaults.edgeWidth,
   visibilityThreshold: Dp = FadingEdgesDefaults.visibilityThreshold,
   visibilityEasing: Easing = FadingEdgesDefaults.visibilityEasing,
-  startPaddingXStep: Double? = null,
-  endPaddingXStep: Double? = null,
 ): FadingEdges =
-  remember(startWidth, endWidth, visibilityThreshold, visibilityEasing, startPaddingXStep, endPaddingXStep) {
-    if (startPaddingXStep != null || endPaddingXStep != null) {
-      PaddedFadingEdges(startWidth, endWidth, visibilityThreshold, visibilityEasing, startPaddingXStep, endPaddingXStep)
-    } else {
-      FadingEdges(startWidth, endWidth, visibilityThreshold, visibilityEasing)
-    }
+  remember(startWidth, endWidth, visibilityThreshold, visibilityEasing) {
+    FadingEdges(startWidth, endWidth, visibilityThreshold, visibilityEasing)
   }
 
 /** Creates and remembers a [FadingEdges] instance. */
@@ -179,60 +179,6 @@ public fun rememberFadingEdges(
     visibilityThreshold = visibilityThreshold,
     visibilityEasing = visibilityEasing,
   )
-
-/**
- * A [FadingEdges] subclass that computes effective fade widths from xStep-based padding.
- * The fade width is the maximum of the fixed [startWidth]/[endWidth] and the
- * padding computed from [startPaddingXStep]/[endPaddingXStep] * xSpacing.
- */
-internal class PaddedFadingEdges(
-  startWidth: Dp,
-  endWidth: Dp,
-  visibilityThreshold: Dp,
-  visibilityEasing: Easing,
-  private val startPaddingXStep: Double?,
-  private val endPaddingXStep: Double?,
-) : FadingEdges(startWidth, endWidth, visibilityThreshold, visibilityEasing) {
-  private val fadePaint = Paint().apply { blendMode = BlendMode.DstOut }
-
-  internal fun draw(context: CartesianDrawingContext, xSpacing: Float) {
-    // Override effective widths based on xStep padding
-    // The fade extends to cover the padding area
-    with(context) {
-      val maxScroll = getMaxScrollDistance()
-      val effectiveStartWidth = if (startPaddingXStep != null) {
-        maxOf(startWidth.pixels, (startPaddingXStep * xSpacing).toFloat())
-      } else {
-        startWidth.pixels
-      }
-      val effectiveEndWidth = if (endPaddingXStep != null) {
-        maxOf(endWidth.pixels, (endPaddingXStep * xSpacing).toFloat())
-      } else {
-        endWidth.pixels
-      }
-
-      if (scrollEnabled && effectiveStartWidth > 0f && scroll > 0f) {
-        val fadeAlpha = (scroll / visibilityThreshold.pixels).coerceAtMost(1f)
-        val rect = Rect(layerBounds.left, layerBounds.top, layerBounds.left + effectiveStartWidth, layerBounds.bottom)
-        Brush.horizontalGradient(
-          colors = listOf(Color.Black.copy(alpha = visibilityEasing.transform(fadeAlpha)), Color.Transparent),
-          startX = rect.left, endX = rect.right, tileMode = TileMode.Clamp,
-        ).applyTo(size = rect.size, p = fadePaint, alpha = 1f)
-        canvas.drawRect(rect, fadePaint)
-      }
-
-      if (scrollEnabled && effectiveEndWidth > 0f && scroll < maxScroll) {
-        val fadeAlpha = ((maxScroll - scroll) / visibilityThreshold.pixels).coerceAtMost(1f)
-        val rect = Rect(layerBounds.right - effectiveEndWidth, layerBounds.top, layerBounds.right, layerBounds.bottom)
-        Brush.horizontalGradient(
-          colors = listOf(Color.Transparent, Color.Black.copy(alpha = visibilityEasing.transform(fadeAlpha))),
-          startX = rect.left, endX = rect.right, tileMode = TileMode.Clamp,
-        ).applyTo(size = rect.size, p = fadePaint, alpha = 1f)
-        canvas.drawRect(rect, fadePaint)
-      }
-    }
-  }
-}
 
 private object FadingEdgesDefaults {
   val edgeWidth = FADING_EDGE_WIDTH_DP.dp

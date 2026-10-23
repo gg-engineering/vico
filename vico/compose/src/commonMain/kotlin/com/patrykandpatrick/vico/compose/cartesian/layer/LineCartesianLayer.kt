@@ -45,6 +45,7 @@ import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerDrawin
 import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.data.ScrollAwareRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.WindowSettleSignal
 import com.patrykandpatrick.vico.compose.cartesian.data.forEachIn
 import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.Interpolator.Companion.catmullRom
@@ -130,6 +131,9 @@ protected constructor(
   private var transformIndexMap: Map<Double, Int>? = null
   private var transformLastSeriesKey: Long = 0L
   private var transformLastTargetKey: Long = 0L  // tracks target yRange changes
+  // Null, not 0, for "never computed": 0 is a real key — an empty series, or a window holding no
+  // entries, both produce it, and either is reachable on the first frame.
+  private var transformLastWindowKey: Long? = null
   // Fade: 0=none, 1=fading-out (old values), 2=fading-in (new values)
   private var transformFadePhase: Int = 0
   private var transformFadeStart: kotlin.time.TimeMark? = null
@@ -712,13 +716,28 @@ protected constructor(
     drawingStart: Float,
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
   ) {
+    // Points are clipped to the layer, so one at the edge is cut where the plot is cut instead of
+    // being drawn whole outside it.
+    //
+    // forEachPointInBounds runs its action for a point and only then stops if that point was past
+    // the edge, so the first one outside is always drawn — deliberately, because the line has to
+    // carry on to the boundary rather than stopping at the last point inside. The line needs that;
+    // the dot on top of it does not, and without a clip the dot sat beyond the plot with nothing
+    // under it. Clipping rather than skipping keeps a point sliding in under a scroll revealed
+    // progressively. (MOB-2953)
+    canvas.save()
+    canvas.clipRect(layerBounds)
     forEachPointInBounds(
       series = series,
       drawingStart = drawingStart,
       pointInfoMap = pointInfoMap,
     ) { chartEntry, x, y, previousX, nextX ->
+      // A point at the edge is left out rather than clipped. Clipping a dot leaves a crescent,
+      // which reads as a rendering fault rather than as something sliding in — the same reason
+      // separators are excluded instead of clipped. The clip above still stands so nothing can
+      // spill past the plot, but the dot itself is skipped once its centre is outside.
       val point = line.pointProvider?.getPoint(chartEntry, seriesIndex, model.extraStore)
-      point?.draw(this, x, y)
+      if (x >= layerBounds.left && x <= layerBounds.right) point?.draw(this, x, y)
 
       line.dataLabel
         .takeIf {
@@ -762,6 +781,7 @@ protected constructor(
           )
         }
     }
+    canvas.restore()
   }
 
   protected fun CartesianDrawingContext.getMaxDataLabelWidth(
@@ -814,7 +834,7 @@ protected constructor(
     // yTransform triggered ONLY on yRange change (syncs with primary layer range animation).
     // Not called during active scrolling — fractions are stable until range updates.
 
-    // yTransform — called on series change, first compute, or target yRange change.
+    // yTransform — called on series change, first compute, window change, or target yRange change.
     val transformedY: DoubleArray? = if (yTransform != null) {
       val seriesKey = series.hashCode().toLong()
       val seriesChanged = transformLastSeriesKey != 0L && transformLastSeriesKey != seriesKey
@@ -823,25 +843,51 @@ protected constructor(
       val targetYRange = ranges.getTargetYRange(verticalAxisPosition)
       val targetKey = targetYRange.minY.toBits() xor (targetYRange.maxY.toBits() * 31)
 
-      // First compute or series changed → snap (no fade)
+      // A transform is free to read the window as well as the series and the range, and the one
+      // this exists for does: it rescales its series against the values currently in view. Keyed
+      // on the series and the range alone, a window that moved without changing either returned
+      // the previous window's scaling — a visible kink in the line that nothing later invalidated,
+      // so it stayed until some unrelated change happened to move one of the other two keys.
+      //
+      // Keyed on the settle rather than on the window itself. The window moves every frame of a
+      // scroll, and recomputing on that rescales the line continuously under the finger. The
+      // provider counts settles instead, so this fires once, when the scroll stops, alongside the
+      // axis animation the primary layer is already following.
+      val windowKey = (rangeProvider as? WindowSettleSignal)?.settleEpoch?.toLong() ?: 0L
+      val windowChanged = transformLastWindowKey != null && transformLastWindowKey != windowKey
+
+      // First compute, or the data itself changed → snap. Against the range the chart is heading
+      // for, never the one it is leaving: a settle starts the axis animating, so at this moment
+      // `yRange` is still the old range. Mapping against it leaves the line where the old axis
+      // put it while the axis moves out from under it, which puts the line off the plot.
       if (transformCacheResult == null || seriesChanged) {
         val visibleXRange = getVisibleXRange()
-        transformCacheResult = yTransform.invoke(series, yRange, visibleXRange)
+        transformCacheResult = yTransform.invoke(series, targetYRange, visibleXRange)
         transformIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
         transformLastSeriesKey = seriesKey
         transformLastTargetKey = targetKey
+        transformLastWindowKey = windowKey
         transformFadePhase = 0
         transformFadeOpacity = 1f
       }
 
-      // Target changed → recompute with TARGET yRange + fade
-      if (targetKey != transformLastTargetKey && transformFadePhase == 0) {
+      // The basis moved — a new target range, a settled window, or both. One path for both, so a
+      // settled window cannot mark the target as handled and skip the recompute that follows it.
+      if ((targetKey != transformLastTargetKey || windowChanged) && transformFadePhase == 0) {
         val visibleXRange = getVisibleXRange()
-        transformPendingResult = yTransform.invoke(series, targetYRange, visibleXRange)
-        transformPendingIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
+        val pending = yTransform.invoke(series, targetYRange, visibleXRange)
         transformLastTargetKey = targetKey
-        transformFadePhase = 1
-        transformFadeStart = TimeSource.Monotonic.markNow()
+        transformLastWindowKey = windowKey
+        // Only fade when the fade would show something. A settled window that admits no new
+        // readings produces the same values it already had, and fading between two identical
+        // results is a flicker with nothing behind it — which every scroll that stayed inside one
+        // scale would otherwise do.
+        if (pending != null && !pending.contentEquals(transformCacheResult)) {
+          transformPendingResult = pending
+          transformPendingIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
+          transformFadePhase = 1
+          transformFadeStart = TimeSource.Monotonic.markNow()
+        }
       }
 
       // Fade state machine
@@ -1012,6 +1058,19 @@ protected constructor(
     chartRanges: MutableCartesianChartRanges,
     model: LineCartesianLayerModel,
   ) {
+    // A layer that transforms its y values at draw time has none of its own to offer: what it
+    // draws is produced by `yTransform`, which maps the series into the range another layer owns.
+    // Unioning its raw values in widened the axis to cover readings in a different unit entirely —
+    // a pulse of 60 against a weight of 150 opened the axis at zero — and because a union only
+    // ever widens, the first frame of a tab kept that range until the animation replaced it.
+    if (yTransform != null) {
+      chartRanges.tryUpdateX(
+        rangeProvider.getMinX(model.minX, model.maxX, model.extraStore),
+        rangeProvider.getMaxX(model.minX, model.maxX, model.extraStore),
+      )
+      return
+    }
+
     var minY = model.minY
     var maxY = model.maxY
     model.series.forEachIndexed { seriesIndex, series ->
@@ -1114,6 +1173,7 @@ protected constructor(
     newLayer.transformIndexMap = this.transformIndexMap
     newLayer.transformLastSeriesKey = this.transformLastSeriesKey
     newLayer.transformLastTargetKey = this.transformLastTargetKey
+    newLayer.transformLastWindowKey = this.transformLastWindowKey
     newLayer.transformFadeOpacity = this.transformFadeOpacity
     newLayer.transformFadePhase = this.transformFadePhase
     newLayer.transformFadeStart = this.transformFadeStart
@@ -1285,3 +1345,4 @@ public fun LineCartesianLayer.Companion.rememberLine(
     dataLabelValueFormatter,
     dataLabelRotationDegrees,
   )
+
