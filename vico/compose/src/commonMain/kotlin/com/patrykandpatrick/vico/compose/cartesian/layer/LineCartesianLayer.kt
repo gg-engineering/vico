@@ -130,6 +130,9 @@ protected constructor(
   private var transformIndexMap: Map<Double, Int>? = null
   private var transformLastSeriesKey: Long = 0L
   private var transformLastTargetKey: Long = 0L  // tracks target yRange changes
+  // Null, not 0, for "never computed": 0 is a real key — an empty series, or a window holding no
+  // entries, both produce it, and either is reachable on the first frame.
+  private var transformLastWindowKey: Long? = null
   // Fade: 0=none, 1=fading-out (old values), 2=fading-in (new values)
   private var transformFadePhase: Int = 0
   private var transformFadeStart: kotlin.time.TimeMark? = null
@@ -830,7 +833,7 @@ protected constructor(
     // yTransform triggered ONLY on yRange change (syncs with primary layer range animation).
     // Not called during active scrolling — fractions are stable until range updates.
 
-    // yTransform — called on series change, first compute, or target yRange change.
+    // yTransform — called on series change, first compute, window change, or target yRange change.
     val transformedY: DoubleArray? = if (yTransform != null) {
       val seriesKey = series.hashCode().toLong()
       val seriesChanged = transformLastSeriesKey != 0L && transformLastSeriesKey != seriesKey
@@ -839,13 +842,26 @@ protected constructor(
       val targetYRange = ranges.getTargetYRange(verticalAxisPosition)
       val targetKey = targetYRange.minY.toBits() xor (targetYRange.maxY.toBits() * 31)
 
-      // First compute or series changed → snap (no fade)
-      if (transformCacheResult == null || seriesChanged) {
+      // A transform is free to read the window as well as the series and the range, and the one
+      // this exists for does: it rescales its series against the values currently in view. Keyed
+      // on the series and the range alone, a window that moved without changing either returned
+      // the previous window's scaling — a visible kink in the line that nothing later invalidated,
+      // so it stayed until some unrelated change happened to move one of the other two keys.
+      //
+      // Keyed on which entries are in view rather than on the window's own bounds: that is what
+      // such a transform actually reads, so a scroll that moves the window without admitting or
+      // dropping a point leaves the key alone, and the line does not rescale under the finger.
+      val windowKey = visibleEntryKey(series, getVisibleXRange())
+      val windowChanged = transformLastWindowKey != null && transformLastWindowKey != windowKey
+
+      // First compute, series changed or window changed → snap (no fade)
+      if (transformCacheResult == null || seriesChanged || windowChanged) {
         val visibleXRange = getVisibleXRange()
         transformCacheResult = yTransform.invoke(series, yRange, visibleXRange)
         transformIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
         transformLastSeriesKey = seriesKey
         transformLastTargetKey = targetKey
+        transformLastWindowKey = windowKey
         transformFadePhase = 0
         transformFadeOpacity = 1f
       }
@@ -856,6 +872,7 @@ protected constructor(
         transformPendingResult = yTransform.invoke(series, targetYRange, visibleXRange)
         transformPendingIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
         transformLastTargetKey = targetKey
+        transformLastWindowKey = windowKey
         transformFadePhase = 1
         transformFadeStart = TimeSource.Monotonic.markNow()
       }
@@ -1130,6 +1147,7 @@ protected constructor(
     newLayer.transformIndexMap = this.transformIndexMap
     newLayer.transformLastSeriesKey = this.transformLastSeriesKey
     newLayer.transformLastTargetKey = this.transformLastTargetKey
+    newLayer.transformLastWindowKey = this.transformLastWindowKey
     newLayer.transformFadeOpacity = this.transformFadeOpacity
     newLayer.transformFadePhase = this.transformFadePhase
     newLayer.transformFadeStart = this.transformFadeStart
@@ -1301,3 +1319,37 @@ public fun LineCartesianLayer.Companion.rememberLine(
     dataLabelValueFormatter,
     dataLabelRotationDegrees,
   )
+
+/**
+ * Identifies the slice of [series] that [visibleXRange] admits, for cache keys.
+ *
+ * The set of visible entries, not the window's own bounds: a `yTransform` reads the window only to
+ * decide which entries it is scaling against, so two windows holding the same entries produce the
+ * same output and must not recompute. Scrolling a chart therefore rescales once per point crossed
+ * rather than once per frame.
+ *
+ * Binary searched because the series is sorted by x and can hold years of daily readings.
+ */
+internal fun visibleEntryKey(
+  series: List<LineCartesianLayerModel.Entry>,
+  visibleXRange: ClosedFloatingPointRange<Double>,
+): Long {
+  val first = series.boundIndex(visibleXRange.start, inclusive = true)
+  val last = series.boundIndex(visibleXRange.endInclusive, inclusive = false) - 1
+  return first.toLong() * 31 + last
+}
+
+/**
+ * Index of the first entry past [x] — counting one exactly at [x] as past it when [inclusive], so
+ * the same search serves both ends of a closed range. Returns `size` when no entry is past [x].
+ */
+private fun List<LineCartesianLayerModel.Entry>.boundIndex(x: Double, inclusive: Boolean): Int {
+  var low = 0
+  var high = size
+  while (low < high) {
+    val mid = (low + high) / 2
+    val before = if (inclusive) this[mid].x < x else this[mid].x <= x
+    if (before) low = mid + 1 else high = mid
+  }
+  return low
+}
