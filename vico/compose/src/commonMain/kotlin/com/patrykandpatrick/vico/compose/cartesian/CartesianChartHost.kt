@@ -246,19 +246,28 @@ internal fun CartesianChartHostImpl(
 
   val scrubController = chart.markerController as? ScrubMarkerController
 
-  // Restore or clear marker on first composition based on caller's state.
-  // initialMarkerX is the source of truth from the ViewModel — it overrides
-  // any stale value that rememberSaveable may have preserved.
+  // The caller owns whether there is a marker at all. Keyed on initialMarkerX, not Unit: running
+  // once per host meant a caller that cleared its marker — because the marked entry was deleted,
+  // or fell outside the window — never reached the chart, which went on drawing the dot and its
+  // guideline at an x the caller no longer held. Clearing also deactivates the controller now;
+  // nulling markerX alone left it believing a marker was still up.
+  //
+  // Only the clear is forced. A marker is still restored into an empty saveable rather than
+  // assigned over whatever is there, because during a drag the local value is ahead of the one
+  // the caller has echoed back, and assigning would drag the marker backwards under the finger.
   if (scrubController != null) {
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialMarkerX) {
       if (initialMarkerX != null) {
-        // Caller has a marker — restore if saveable lost it, then activate
         if (markerX == null) markerX = initialMarkerX
         scrubController.hasActiveMarker = true
-      } else if (markerX != null) {
-        // Caller says no marker — clear stale saveable value (e.g. segment switch)
+      } else {
         markerX = null
+        markerSeriesIndex = null
+        lastAcceptedInteraction = null
+        scrubController.hasActiveMarker = false
       }
+    }
+    LaunchedEffect(Unit) {
       snapshotFlow { scrubController.hasActiveMarker }
         .collect { active ->
           if (!active && markerX != null) {
