@@ -1045,6 +1045,19 @@ protected constructor(
     chartRanges: MutableCartesianChartRanges,
     model: LineCartesianLayerModel,
   ) {
+    // A layer that transforms its y values at draw time has none of its own to offer: what it
+    // draws is produced by `yTransform`, which maps the series into the range another layer owns.
+    // Unioning its raw values in widened the axis to cover readings in a different unit entirely —
+    // a pulse of 60 against a weight of 150 opened the axis at zero — and because a union only
+    // ever widens, the first frame of a tab kept that range until the animation replaced it.
+    if (yTransform != null) {
+      chartRanges.tryUpdateX(
+        rangeProvider.getMinX(model.minX, model.maxX, model.extraStore),
+        rangeProvider.getMaxX(model.minX, model.maxX, model.extraStore),
+      )
+      return
+    }
+
     var minY = model.minY
     var maxY = model.maxY
     model.series.forEachIndexed { seriesIndex, series ->

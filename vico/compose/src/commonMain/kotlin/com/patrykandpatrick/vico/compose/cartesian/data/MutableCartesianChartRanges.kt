@@ -38,7 +38,18 @@ public class MutableCartesianChartRanges : CartesianChartRanges {
   override var xStep: Double = 1.0
 
   override fun getYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
-    yRanges[axisPosition] ?: yRanges.getValue(null)
+    yRanges[axisPosition] ?: yRanges[null] ?: NeutralYRange
+
+  /**
+   * Widens the _x_ range only, for a layer whose _y_ values do not belong to the axis it draws
+   * against — one that transforms them into another layer's range at draw time. Such a layer still
+   * decides how far the chart reaches in time; its raw values would otherwise be unioned into a
+   * range nothing is ever drawn in.
+   */
+  public fun tryUpdateX(minX: Double, maxX: Double) {
+    _minX = _minX?.coerceAtMost(minX) ?: minX
+    _maxX = _maxX?.coerceAtLeast(maxX) ?: maxX
+  }
 
   /**
    * Tries to update the stored values. A minimum value can only be decreased. A maximum value can
@@ -90,6 +101,22 @@ public class MutableCartesianChartRanges : CartesianChartRanges {
   }
 }
 
+/**
+ * The range of a chart no layer has offered one for — every layer it holds transforms its _y_
+ * values into someone else's range, leaving none of its own.
+ *
+ * Reachable only in that degenerate case, and a neutral range there beats the lookup failure it
+ * replaces: a chart that draws nothing meaningful is still not a chart that crashes.
+ *
+ * Immutable, unlike the ranges it stands in for — it is shared by every chart that reaches this
+ * branch, so a caller widening it would be widening all of them.
+ */
+private val NeutralYRange = object : CartesianChartRanges.YRange {
+  override val minY = 0.0
+  override val maxY = 1.0
+  override val length = 1.0
+}
+
 internal fun MutableCartesianChartRanges.toImmutable(): CartesianChartRanges =
   object : CartesianChartRanges {
     private val yRanges = this@toImmutable.yRanges
@@ -98,7 +125,7 @@ internal fun MutableCartesianChartRanges.toImmutable(): CartesianChartRanges =
     override val xStep: Double = this@toImmutable.xStep
 
     override fun getYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
-      yRanges[axisPosition] ?: yRanges.getValue(null)
+      yRanges[axisPosition] ?: yRanges[null] ?: NeutralYRange
 
     override fun toString(): String =
       "CartesianChartRanges(minX=$minX, maxX=$maxX, xStep=$xStep, yRanges=$yRanges)"
