@@ -1,0 +1,524 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/layer/LineCartesianLayer.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/layer/LineCartesianLayer.kt
+@@ -22,7 +22,15 @@
+ import androidx.compose.runtime.Stable
+ import androidx.compose.runtime.remember
+ import androidx.compose.ui.geometry.Offset
+-import androidx.compose.ui.graphics.*
++import androidx.compose.ui.graphics.BlendMode
++import androidx.compose.ui.graphics.Canvas
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.graphics.ImageBitmap
++import androidx.compose.ui.graphics.Paint
++import androidx.compose.ui.graphics.PaintingStyle
++import androidx.compose.ui.graphics.Path
++import androidx.compose.ui.graphics.PathEffect
++import androidx.compose.ui.graphics.StrokeCap
+ import androidx.compose.ui.unit.Dp
+ import androidx.compose.ui.unit.dp
+ import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
+@@ -30,20 +38,52 @@
+ import com.patrykandpatrick.vico.compose.cartesian.ColorScale
+ import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
+ import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+-import com.patrykandpatrick.vico.compose.cartesian.data.*
++import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
++import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
++import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
++import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerDrawingModel
++import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
++import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
++import com.patrykandpatrick.vico.compose.cartesian.data.ScrollAwareRangeProvider
++import com.patrykandpatrick.vico.compose.cartesian.data.WindowSettleSignal
++import com.patrykandpatrick.vico.compose.cartesian.data.forEachIn
++import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
++import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.Interpolator.Companion.catmullRom
+ import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.Line
+ import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.PointConnector
+ import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
+ import com.patrykandpatrick.vico.compose.cartesian.marker.LineCartesianLayerMarkerTarget
+ import com.patrykandpatrick.vico.compose.cartesian.marker.MutableLineCartesianLayerMarkerTarget
+-import com.patrykandpatrick.vico.compose.common.*
++import com.patrykandpatrick.vico.compose.common.Defaults
++import com.patrykandpatrick.vico.compose.common.EmptyPaint
++import com.patrykandpatrick.vico.compose.common.Fill
++import com.patrykandpatrick.vico.compose.common.Position
++import com.patrykandpatrick.vico.compose.common.ValueWrapper
+ import com.patrykandpatrick.vico.compose.common.component.Component
+ import com.patrykandpatrick.vico.compose.common.component.TextComponent
+ import com.patrykandpatrick.vico.compose.common.data.CacheStore
+ import com.patrykandpatrick.vico.compose.common.data.CartesianLayerDrawingModelInterpolator
+ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+ import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
+-import kotlin.math.*
++import com.patrykandpatrick.vico.compose.common.doubled
++import com.patrykandpatrick.vico.compose.common.getBitmap
++import com.patrykandpatrick.vico.compose.common.getPixel
++import com.patrykandpatrick.vico.compose.common.getRepeating
++import com.patrykandpatrick.vico.compose.common.getStart
++import com.patrykandpatrick.vico.compose.common.getValue
++import com.patrykandpatrick.vico.compose.common.half
++import com.patrykandpatrick.vico.compose.common.inBounds
++import com.patrykandpatrick.vico.compose.common.orZero
++import com.patrykandpatrick.vico.compose.common.saveLayer
++import com.patrykandpatrick.vico.compose.common.setValue
++import com.patrykandpatrick.vico.compose.common.vicoTheme
++import kotlin.math.abs
++import kotlin.math.ceil
++import kotlin.math.max
++import kotlin.math.min
++import kotlin.math.roundToInt
++import kotlin.time.Duration.Companion.milliseconds
++import kotlin.time.TimeSource
+ 
+ /**
+  * Draws the content of line charts.
+@@ -69,7 +109,49 @@
+     > =
+     CartesianLayerDrawingModelInterpolator.default(),
+   protected val drawingModelKey: ExtraStore.Key<LineCartesianLayerDrawingModel>,
++  /**
++   * Transforms Y values at draw time. Receives full series, Y range, and visible X range. Returns
++   * DoubleArray of transformed Y values (same size as series), or null for no transform.
++   */
++  protected val yTransform:
++    ((
++      series: List<LineCartesianLayerModel.Entry>,
++      yRange: CartesianChartRanges.YRange,
++      visibleXRange: ClosedFloatingPointRange<Double>,
++    ) -> DoubleArray?)? =
++    null,
+ ) : BaseCartesianLayer<LineCartesianLayerModel>() {
++  // Internal accessors for CartesianChartHost scroll-aware range support.
++  internal val internalRangeProvider: CartesianLayerRangeProvider
++    get() = rangeProvider
++
++  internal val internalVerticalAxisPosition: Axis.Position.Vertical?
++    get() = verticalAxisPosition
++
++  // yTransform — called ONLY on series change or when animation target changes.
++  // Not during scroll. Not during yRange animation frames.
++  //
++  // Scroll: stale rawY + stable yRange = constant position.
++  // Animation start: recompute with TARGET yRange + fade correction.
++  // Animation frames: stale rawY + animated yRange = natural animation (synced with primary).
++  private var transformCacheResult: DoubleArray? = null
++  private var transformIndexMap: Map<Double, Int>? = null
++  private var transformLastSeriesKey: Long = 0L
++  private var transformLastTargetKey: Long = 0L // tracks target yRange changes
++  // Null, not 0, for "never computed": 0 is a real key — an empty series, or a window holding no
++  // entries, both produce it, and either is reachable on the first frame.
++  private var transformLastWindowKey: Long? = null
++  // Fade: 0=none, 1=fading-out (old values), 2=fading-in (new values)
++  private var transformFadePhase: Int = 0
++  private var transformFadeStart: kotlin.time.TimeMark? = null
++  internal var transformFadeOpacity: Float = 1f
++    private set
++
++  private var transformPendingResult: DoubleArray? = null
++  private var transformPendingIndexMap: Map<Double, Int>? = null
++  private val fadeOutDuration = 100.milliseconds
++  private val fadeInDuration = 150.milliseconds
++
+   /**
+    * Defines the appearance of a line in a line chart.
+    *
+@@ -392,6 +474,14 @@
+       public fun catmullRom(
+         @FloatRange(from = 0.0, to = 1.0, toInclusive = false) alpha: Float = 0f
+       ): Interpolator = CatmullRomInterpolator(alpha)
++
++      /**
++       * Uses monotone cubic interpolation (Fritsch-Carlson algorithm). Matches SwiftUI's
++       * `.monotone` interpolation and iOS Health app charts. Unlike [catmullRom], this interpolator
++       * **never overshoots** — the curve stays within the Y bounds of the data. Ideal for health
++       * data (weight, blood pressure, temperature).
++       */
++      public fun monotone(): Interpolator = MonotoneInterpolator
+     }
+   }
+ 
+@@ -485,6 +575,15 @@
+ 
+   override val markerTargets: Map<Double, List<CartesianMarker.Target>> = _markerTargets
+ 
++  /** When false, this layer does not produce marker targets (e.g., percentile band layers). */
++  public var markerTargetsEnabled: Boolean = true
++
++  /**
++   * When true, skip the drawing model cache and always compute line positions from the live
++   * animated Y range. Use for layers that share another layer's scroll-aware range.
++   */
++  public var alwaysUseLiveRange: Boolean = false
++
+   /** Creates a [LineCartesianLayer]. */
+   public constructor(
+     lineProvider: LineProvider,
+@@ -497,6 +596,14 @@
+         LineCartesianLayerDrawingModel,
+       > =
+       CartesianLayerDrawingModelInterpolator.default(),
++    yTransform:
++      ((
++        series: List<LineCartesianLayerModel.Entry>,
++        yRange: CartesianChartRanges.YRange,
++        visibleXRange: ClosedFloatingPointRange<Double>,
++      ) -> DoubleArray?)? =
++      null,
++    markerTargetsEnabled: Boolean = true,
+   ) : this(
+     lineProvider,
+     pointSpacing,
+@@ -504,13 +611,23 @@
+     verticalAxisPosition,
+     drawingModelInterpolator,
+     ExtraStore.Key(),
+-  )
++    yTransform,
++  ) {
++    this.markerTargetsEnabled = markerTargetsEnabled
++  }
+ 
+   override fun drawInternal(context: CartesianDrawingContext, model: LineCartesianLayerModel) {
+     with(context) {
+       resetTempData()
+ 
+-      val drawingModel = extraStore.getOrNull(drawingModelKey)
++      // When using ScrollAwareRangeProvider, skip the cached drawing model so that
++      // line positions are always computed from the live (animated) yRange.
++      val drawingModel =
++        if (rangeProvider is ScrollAwareRangeProvider || alwaysUseLiveRange) {
++          null
++        } else {
++          extraStore.getOrNull(drawingModelKey)
++        }
+ 
+       model.series.forEachIndexed { seriesIndex, series ->
+         val pointInfoMap = drawingModel?.getOrNull(seriesIndex)
+@@ -538,7 +655,7 @@
+           connectPoints(line.interpolator, points, visibleIndexRange)
+         }
+ 
+-        saveLayer(opacity = drawingModel?.opacity ?: 1f)
++        saveLayer(opacity = (drawingModel?.opacity ?: 1f) * transformFadeOpacity)
+ 
+         line.fillColor?.let { color ->
+           line.draw(context, linePath, color, verticalAxisPosition)
+@@ -595,6 +712,7 @@
+     canvasY: Float,
+     color: Color,
+   ) {
++    if (!markerTargetsEnabled) return
+     if (canvasX <= layerBounds.left - 1 || canvasX >= layerBounds.right + 1) return
+     val limitedCanvasY = canvasY.coerceIn(layerBounds.top, layerBounds.bottom)
+     _markerTargets
+@@ -610,13 +728,28 @@
+     drawingStart: Float,
+     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
+   ) {
++    // Points are clipped to the layer, so one at the edge is cut where the plot is cut instead of
++    // being drawn whole outside it.
++    //
++    // forEachPointInBounds runs its action for a point and only then stops if that point was past
++    // the edge, so the first one outside is always drawn — deliberately, because the line has to
++    // carry on to the boundary rather than stopping at the last point inside. The line needs that;
++    // the dot on top of it does not, and without a clip the dot sat beyond the plot with nothing
++    // under it. Clipping rather than skipping keeps a point sliding in under a scroll revealed
++    // progressively. (MOB-2953)
++    canvas.save()
++    canvas.clipRect(layerBounds)
+     forEachPointInBounds(
+       series = series,
+       drawingStart = drawingStart,
+       pointInfoMap = pointInfoMap,
+     ) { chartEntry, x, y, previousX, nextX ->
++      // A point at the edge is left out rather than clipped. Clipping a dot leaves a crescent,
++      // which reads as a rendering fault rather than as something sliding in — the same reason
++      // separators are excluded instead of clipped. The clip above still stands so nothing can
++      // spill past the plot, but the dot itself is skipped once its centre is outside.
+       val point = line.pointProvider?.getPoint(chartEntry, seriesIndex, model.extraStore)
+-      point?.draw(this, x, y)
++      if (x >= layerBounds.left && x <= layerBounds.right) point?.draw(this, x, y)
+ 
+       line.dataLabel
+         .takeIf {
+@@ -660,6 +793,7 @@
+           )
+         }
+     }
++    canvas.restore()
+   }
+ 
+   protected fun CartesianDrawingContext.getMaxDataLabelWidth(
+@@ -672,6 +806,7 @@
+       previousX != null && nextX != null -> min(abs(x - previousX), abs(nextX - x))
+       previousX == null && nextX == null ->
+         min(layerDimensions.startPadding, layerDimensions.endPadding).doubled
++
+       nextX != null -> {
+         ((entry.x - ranges.minX) / ranges.xStep * layerDimensions.xSpacing +
+             layerDimensions.startPadding)
+@@ -679,6 +814,7 @@
+           .toFloat()
+           .coerceAtMost(abs(nextX - x))
+       }
++
+       else -> {
+         ((ranges.maxX - entry.x) / ranges.xStep * layerDimensions.xSpacing +
+             layerDimensions.endPadding)
+@@ -703,7 +839,102 @@
+     val minX = ranges.minX
+     val maxX = ranges.maxX
+     val xStep = ranges.xStep
++    val yRange = ranges.getYRange(verticalAxisPosition)
+ 
++    // yTransform with fraction caching + animated transitions synced to primary layer.
++    //
++    // yTransform triggered ONLY on yRange change (syncs with primary layer range animation).
++    // Not called during active scrolling — fractions are stable until range updates.
++
++    // yTransform — called on series change, first compute, window change, or target yRange change.
++    val transformedY: DoubleArray? =
++      if (yTransform != null) {
++        val seriesKey = series.hashCode().toLong()
++        val seriesChanged = transformLastSeriesKey != 0L && transformLastSeriesKey != seriesKey
++
++        // Read animation target from chart ranges — works with any provider type
++        val targetYRange = ranges.getTargetYRange(verticalAxisPosition)
++        val targetKey = targetYRange.minY.toBits() xor (targetYRange.maxY.toBits() * 31)
++
++        // A transform is free to read the window as well as the series and the range, and the one
++        // this exists for does: it rescales its series against the values currently in view. Keyed
++        // on the series and the range alone, a window that moved without changing either returned
++        // the previous window's scaling — a visible kink in the line that nothing later
++        // invalidated,
++        // so it stayed until some unrelated change happened to move one of the other two keys.
++        //
++        // Keyed on the settle rather than on the window itself. The window moves every frame of a
++        // scroll, and recomputing on that rescales the line continuously under the finger. The
++        // provider counts settles instead, so this fires once, when the scroll stops, alongside the
++        // axis animation the primary layer is already following.
++        val windowKey = (rangeProvider as? WindowSettleSignal)?.settleEpoch?.toLong() ?: 0L
++        val windowChanged = transformLastWindowKey != null && transformLastWindowKey != windowKey
++
++        // First compute, or the data itself changed → snap. Against the range the chart is heading
++        // for, never the one it is leaving: a settle starts the axis animating, so at this moment
++        // `yRange` is still the old range. Mapping against it leaves the line where the old axis
++        // put it while the axis moves out from under it, which puts the line off the plot.
++        if (transformCacheResult == null || seriesChanged) {
++          val visibleXRange = getVisibleXRange()
++          transformCacheResult = yTransform.invoke(series, targetYRange, visibleXRange)
++          transformIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
++          transformLastSeriesKey = seriesKey
++          transformLastTargetKey = targetKey
++          transformLastWindowKey = windowKey
++          transformFadePhase = 0
++          transformFadeOpacity = 1f
++        }
++
++        // The basis moved — a new target range, a settled window, or both. One path for both, so a
++        // settled window cannot mark the target as handled and skip the recompute that follows it.
++        if ((targetKey != transformLastTargetKey || windowChanged) && transformFadePhase == 0) {
++          val visibleXRange = getVisibleXRange()
++          val pending = yTransform.invoke(series, targetYRange, visibleXRange)
++          transformLastTargetKey = targetKey
++          transformLastWindowKey = windowKey
++          // Only fade when the fade would show something. A settled window that admits no new
++          // readings produces the same values it already had, and fading between two identical
++          // results is a flicker with nothing behind it — which every scroll that stayed inside one
++          // scale would otherwise do.
++          if (pending != null && !pending.contentEquals(transformCacheResult)) {
++            transformPendingResult = pending
++            transformPendingIndexMap = series.withIndex().associate { (i, e) -> e.x to i }
++            transformFadePhase = 1
++            transformFadeStart = TimeSource.Monotonic.markNow()
++          }
++        }
++
++        // Fade state machine
++        when (transformFadePhase) {
++          1 -> {
++            val elapsed = transformFadeStart?.elapsedNow() ?: fadeOutDuration
++            val t = (elapsed / fadeOutDuration).coerceIn(0.0, 1.0)
++            transformFadeOpacity = (1.0 - t).toFloat()
++            if (t >= 1.0) {
++              transformCacheResult = transformPendingResult
++              transformIndexMap = transformPendingIndexMap
++              transformPendingResult = null
++              transformPendingIndexMap = null
++              transformFadePhase = 2
++              transformFadeStart = TimeSource.Monotonic.markNow()
++              transformFadeOpacity = 0f
++            }
++          }
++          2 -> {
++            val elapsed = transformFadeStart?.elapsedNow() ?: fadeInDuration
++            val t = (elapsed / fadeInDuration).coerceIn(0.0, 1.0)
++            transformFadeOpacity = t.toFloat()
++            if (t >= 1.0) {
++              transformFadePhase = 0
++              transformFadeOpacity = 1f
++            }
++          }
++          else -> transformFadeOpacity = 1f
++        }
++
++        transformCacheResult
++      } else null
++
+     val boundsStart = layerBounds.getStart(isLtr = isLtr)
+     val boundsEnd = boundsStart + layoutDirectionMultiplier * layerBounds.width
+ 
+@@ -712,10 +943,14 @@
+         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
+ 
+     fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
+-      val yRange = ranges.getYRange(verticalAxisPosition)
+-      return layerBounds.bottom -
+-        (pointInfoMap?.get(entry.x)?.y ?: ((entry.y - yRange.minY) / yRange.length).toFloat()) *
+-          layerBounds.height
++      val y =
++        pointInfoMap?.get(entry.x)?.y?.let { it * layerBounds.height }
++          ?: run {
++            val idx = transformIndexMap?.get(entry.x)
++            val rawY = if (idx != null && transformedY != null) transformedY[idx] else entry.y
++            ((rawY - yRange.minY) / yRange.length).toFloat() * layerBounds.height
++          }
++      return layerBounds.bottom - y
+     }
+ 
+     var visibleStart = -1
+@@ -783,8 +1018,11 @@
+ 
+     fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
+       val yRange = ranges.getYRange(verticalAxisPosition)
++      val idx = transformIndexMap?.get(entry.x)
++      val rawY =
++        if (idx != null && transformCacheResult != null) transformCacheResult!![idx] else entry.y
+       return layerBounds.bottom -
+-        (pointInfoMap?.get(entry.x)?.y ?: ((entry.y - yRange.minY) / yRange.length).toFloat()) *
++        (pointInfoMap?.get(entry.x)?.y ?: ((rawY - yRange.minY) / yRange.length).toFloat()) *
+           layerBounds.height
+     }
+ 
+@@ -829,8 +1067,8 @@
+         xSpacing = xSpacing,
+         scalableStartPadding = layerPadding.scalableStart.pixels,
+         scalableEndPadding = layerPadding.scalableEnd.pixels,
+-        unscalableStartPadding = maxPointSize.half + layerPadding.unscalableStart.pixels,
+-        unscalableEndPadding = maxPointSize.half + layerPadding.unscalableEnd.pixels,
++        unscalableStartPadding = layerPadding.unscalableStart.pixels,
++        unscalableEndPadding = layerPadding.unscalableEnd.pixels,
+       )
+     }
+   }
+@@ -839,13 +1077,26 @@
+     chartRanges: MutableCartesianChartRanges,
+     model: LineCartesianLayerModel,
+   ) {
++    // A layer that transforms its y values at draw time has none of its own to offer: what it
++    // draws is produced by `yTransform`, which maps the series into the range another layer owns.
++    // Unioning its raw values in widened the axis to cover readings in a different unit entirely —
++    // a pulse of 60 against a weight of 150 opened the axis at zero — and because a union only
++    // ever widens, the first frame of a tab kept that range until the animation replaced it.
++    if (yTransform != null) {
++      chartRanges.tryUpdateX(
++        rangeProvider.getMinX(model.minX, model.maxX, model.extraStore),
++        rangeProvider.getMaxX(model.minX, model.maxX, model.extraStore),
++      )
++      return
++    }
++
+     var minY = model.minY
+     var maxY = model.maxY
+     model.series.forEachIndexed { seriesIndex, series ->
+       val interpolator = lineProvider.getLine(seriesIndex, model.extraStore).interpolator
+       val yRange = interpolator.getYRange(series.map { it.y })
+-      minY = kotlin.math.min(minY, yRange.start)
+-      maxY = kotlin.math.max(maxY, yRange.endInclusive)
++      minY = min(minY, yRange.start)
++      maxY = max(maxY, yRange.endInclusive)
+     }
+     chartRanges.tryUpdate(
+       rangeProvider.getMinX(model.minX, model.maxX, model.extraStore),
+@@ -921,15 +1172,35 @@
+         LineCartesianLayerDrawingModel,
+       > =
+       this.drawingModelInterpolator,
+-  ): LineCartesianLayer =
+-    LineCartesianLayer(
+-      lineProvider,
+-      pointSpacing,
+-      rangeProvider,
+-      verticalAxisPosition,
+-      drawingModelInterpolator,
+-      drawingModelKey,
+-    )
++    yTransform:
++      ((
++        series: List<LineCartesianLayerModel.Entry>,
++        yRange: CartesianChartRanges.YRange,
++        visibleXRange: ClosedFloatingPointRange<Double>,
++      ) -> DoubleArray?)? =
++      this.yTransform,
++  ): LineCartesianLayer {
++    val newLayer =
++      LineCartesianLayer(
++        lineProvider,
++        pointSpacing,
++        rangeProvider,
++        verticalAxisPosition,
++        drawingModelInterpolator,
++        drawingModelKey,
++        yTransform,
++      )
++    // Carry over yTransform cache so layer recreation doesn't cause a snap
++    newLayer.transformCacheResult = this.transformCacheResult
++    newLayer.transformIndexMap = this.transformIndexMap
++    newLayer.transformLastSeriesKey = this.transformLastSeriesKey
++    newLayer.transformLastTargetKey = this.transformLastTargetKey
++    newLayer.transformLastWindowKey = this.transformLastWindowKey
++    newLayer.transformFadeOpacity = this.transformFadeOpacity
++    newLayer.transformFadePhase = this.transformFadePhase
++    newLayer.transformFadeStart = this.transformFadeStart
++    return newLayer
++  }
+ 
+   override fun equals(other: Any?): Boolean =
+     this === other ||
+@@ -986,6 +1257,15 @@
+     remember {
+       CartesianLayerDrawingModelInterpolator.default()
+     },
++  yTransform:
++    ((
++      series: List<LineCartesianLayerModel.Entry>,
++      yRange: CartesianChartRanges.YRange,
++      visibleXRange: ClosedFloatingPointRange<Double>,
++    ) -> DoubleArray?)? =
++    null,
++  markerTargetsEnabled: Boolean = true,
++  alwaysUseLiveRange: Boolean = false,
+ ): LineCartesianLayer {
+   var lineCartesianLayerWrapper by remember { ValueWrapper<LineCartesianLayer?>(null) }
+   return remember(
+@@ -1002,6 +1282,7 @@
+         rangeProvider,
+         verticalAxisPosition,
+         drawingModelInterpolator,
++        yTransform,
+       )
+         ?: LineCartesianLayer(
+           lineProvider,
+@@ -1009,7 +1290,11 @@
+           rangeProvider,
+           verticalAxisPosition,
+           drawingModelInterpolator,
++          yTransform,
++          markerTargetsEnabled,
+         )
++    lineCartesianLayer.markerTargetsEnabled = markerTargetsEnabled
++    lineCartesianLayer.alwaysUseLiveRange = alwaysUseLiveRange
+     lineCartesianLayerWrapper = lineCartesianLayer
+     lineCartesianLayer
+   }

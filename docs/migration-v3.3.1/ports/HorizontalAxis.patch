@@ -1,0 +1,437 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/axis/HorizontalAxis.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/axis/HorizontalAxis.kt
+@@ -18,7 +18,6 @@
+ 
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.remember
+-import androidx.compose.ui.geometry.Rect
+ import androidx.compose.ui.graphics.Path
+ import androidx.compose.ui.unit.Dp
+ import androidx.compose.ui.unit.dp
+@@ -38,10 +37,13 @@
+ import com.patrykandpatrick.vico.compose.common.component.LineComponent
+ import com.patrykandpatrick.vico.compose.common.component.TextComponent
+ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+-import kotlin.math.ceil
++import kotlin.math.abs
+ import kotlin.math.max
+ import kotlin.math.min
+ 
++/** A stroke's worth of tolerance, so a separator on the closing edge is not drawn. */
++private const val SEPARATOR_EDGE_EPSILON_PX = 1f
++
+ /**
+  * Draws horizontal axes. See the [BaseAxis] documentation for descriptions of the inherited
+  * properties.
+@@ -65,6 +67,17 @@
+   title: (ExtraStore) -> CharSequence?,
+   tickPosition: TickPosition,
+   lineDrawingOrder: LineDrawingOrder,
++  public val separators: Separators? = null,
++  /**
++   * Controls label placement relative to tick: Inside (at axis line), Center (at tick midpoint),
++   * Outside (below tick).
++   */
++  public val labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
++  /**
++   * Controls horizontal label alignment relative to tick: Center, Start (right of tick in LTR), End
++   * (left of tick in LTR).
++   */
++  public val labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
+ ) :
+   BaseAxis<P>(
+     line,
+@@ -153,56 +166,70 @@
+           TickPosition.Inside -> 0f
+           TickPosition.Cross -> this.tickLength / 2
+         }
++      val tickOffset =
++        when (labelVerticalMode) {
++          LabelVerticalMode.Inside -> 0f
++          LabelVerticalMode.Center -> outwardTickLength / 2
++          LabelVerticalMode.Outside -> outwardTickLength
++        }
+       val textY =
+         if (isTop) {
+-          bounds.bottom - lineThickness - outwardTickLength
++          bounds.bottom - lineThickness - tickOffset
+         } else {
+-          bounds.top + lineThickness + outwardTickLength
++          bounds.top + lineThickness + tickOffset
+         }
+       val fullXRange = internalGetFullXRange(layerDimensions)
+       val maxLabelWidth = getMaxLabelWidth(layerDimensions, fullXRange)
+ 
+-      val lineLeft = getLineLeft(context, maxLabelWidth, axisDimensions)
+-      val lineRight = getLineRight(context, maxLabelWidth, axisDimensions)
+-
+-      clipPath.rewind()
+-      clipPath.addRect(
+-        Rect(
+-          lineLeft,
+-          min(bounds.top, layerBounds.top),
+-          lineRight,
+-          max(bounds.bottom, layerBounds.bottom),
+-        ),
+-        Path.Direction.Clockwise,
++      val startMargin =
++        maxOf(
++          itemPlacer.getStartLayerMargin(this, layerDimensions, tickThickness, maxLabelWidth),
++          maxLabelWidth.half,
++        )
++      val endMargin =
++        maxOf(
++          itemPlacer.getEndLayerMargin(this, layerDimensions, tickThickness, maxLabelWidth),
++          maxLabelWidth.half,
++        )
++      // Labels are held to the same horizontal bounds as their guidelines, so one at the edge is
++      // cut where the plot is cut rather than spilling past it.
++      //
++      // The margins are still allowed vertically and are still what the layer reserves, but using
++      // them horizontally let a label overhang the layer by half its width. Guidelines get no such
++      // allowance — drawGuidelines clips strictly to layerBounds — so a boundary at the edge drew
++      // a readable label with no line beneath it. Clipping both the same way keeps them in step,
++      // and a label sliding in under a scroll is revealed progressively rather than appearing
++      // whole once its centre crosses over.
++      canvas.clipRect(
++        maxOf(bounds.left - startMargin, layerBounds.left),
++        min(bounds.top, layerBounds.top),
++        minOf(bounds.right + endMargin, layerBounds.right),
++        max(bounds.bottom, layerBounds.bottom),
+       )
+ 
+-      canvas.clipPath(clipPath)
+-
+       val baseCanvasX =
+         bounds.getStart(isLtr) - scroll + layerDimensions.startPadding * layoutDirectionMultiplier
+       val visibleXRange = getVisibleXRange()
+       val labelValues = itemPlacer.getLabelValues(this, visibleXRange, fullXRange, maxLabelWidth)
+       val lineValues = itemPlacer.getLineValues(this, visibleXRange, fullXRange, maxLabelWidth)
+ 
++      val clipLeft =
++        bounds.left -
++          itemPlacer.getStartLayerMargin(this, layerDimensions, tickThickness, maxLabelWidth)
+       labelValues.forEachIndexed { index, x ->
+         val canvasX =
+           baseCanvasX +
+             ((x - ranges.minX) / ranges.xStep).toFloat() *
+               layerDimensions.xSpacing *
+               layoutDirectionMultiplier
+-        val previousX = labelValues.getOrNull(index - 1) ?: (fullXRange.start.doubled - x)
+-        val nextX = labelValues.getOrNull(index + 1) ?: (fullXRange.endInclusive.doubled - x)
+-        val maxWidth =
+-          ceil(min(x - previousX, nextX - x) / ranges.xStep * layerDimensions.xSpacing).toInt()
+-
+         label?.draw(
+           context = this,
+           text =
+             valueFormatter.formatForAxis(context = this, value = x, verticalAxisPosition = null),
+           x = canvasX,
+           y = textY,
++          horizontalPosition = labelHorizontalPosition,
+           verticalPosition = position.textVerticalPosition,
+-          maxWidth = maxWidth,
+           maxHeight = (bounds.height - outwardTickLength - lineThickness.half).toInt(),
+           rotationDegrees = labelRotationDegrees,
+         )
+@@ -231,9 +258,41 @@
+       canvas.restore()
+ 
+       drawGuidelines(context, baseCanvasX, fullXRange, labelValues, lineValues)
++      drawSeparators(context, baseCanvasX)
+     }
+   }
+ 
++  /**
++   * Draws vertical separator lines at the specified X positions. No canvas clip — uses bounds check
++   * for performance. Skips off-screen separators.
++   */
++  private fun drawSeparators(context: CartesianDrawingContext, baseCanvasX: Float) {
++    val sep = separators ?: return
++    if (sep.values.isEmpty()) return
++    with(context) {
++      // The trailing edge is exclusive, as it is for labels and guidelines: a separator marking the
++      // start of the next period does not belong to this one.
++      //
++      // It was inclusive, and separators are drawn with no clip, so one landing exactly on the edge
++      // drew the outer half of its stroke past the plot — a sliver of the next period's opening
++      // marker peeking in. A hairline of tolerance keeps a boundary that rounds fractionally inside
++      // from slipping through.
++      sep.values.forEach { x ->
++        val canvasX =
++          baseCanvasX +
++            ((x - ranges.minX) / ranges.xStep).toFloat() *
++              layerDimensions.xSpacing *
++              layoutDirectionMultiplier
++        if (
++          canvasX < layerBounds.left || canvasX >= layerBounds.right - SEPARATOR_EDGE_EPSILON_PX
++        ) {
++          return@forEach
++        }
++        sep.line.drawVertical(context, canvasX, layerBounds.top, layerBounds.bottom)
++      }
++    }
++  }
++
+   private fun drawLineAndTicks(
+     context: CartesianDrawingContext,
+     axisDimensions: Map<Axis.Position, AxisDimensions>,
+@@ -264,26 +323,25 @@
+       val tickBottom = tickTop + lineThickness + this.tickLength
+       val fullXRange = internalGetFullXRange(layerDimensions)
+       val maxLabelWidth = getMaxLabelWidth(layerDimensions, fullXRange)
+-      val lineLeft = getLineLeft(context, maxLabelWidth, axisDimensions)
+-      val lineRight = getLineRight(context, maxLabelWidth, axisDimensions)
++      val clipLeft =
++        bounds.left -
++          itemPlacer.getStartLayerMargin(this, layerDimensions, tickThickness, maxLabelWidth)
++      val clipRight =
++        bounds.right +
++          itemPlacer.getEndLayerMargin(this, layerDimensions, tickThickness, maxLabelWidth)
+ 
+       canvas.save()
+-      clipPath.rewind()
+-      clipPath.addRect(
+-        Rect(
+-          lineLeft,
+-          min(bounds.top, layerBounds.top),
+-          lineRight,
+-          max(bounds.bottom, layerBounds.bottom),
+-        ),
+-        Path.Direction.Clockwise,
++      canvas.clipRect(
++        clipLeft,
++        min(bounds.top, layerBounds.top),
++        clipRight,
++        max(bounds.bottom, layerBounds.bottom),
+       )
+-      canvas.clipPath(clipPath)
+ 
+       line?.drawHorizontal(
+         context = this,
+-        left = lineLeft,
+-        right = lineRight,
++        left = clipLeft,
++        right = clipRight,
+         y = if (isTop) bounds.bottom - lineThickness.half else bounds.top + lineThickness.half,
+       )
+ 
+@@ -378,6 +436,18 @@
+     }
+   }
+ 
++  /**
++   * Whether [x] is where the chart starts or ends.
++   *
++   * Compared with a tolerance rather than for equality: a label value is rebuilt by rounding to the
++   * nearest step before it is used, so the one at the first entry is not bit-identical to
++   * ranges.minX and an exact test passes straight over it.
++   */
++  private fun CartesianDrawingContext.isChartEdge(x: Double): Boolean {
++    val tolerance = ranges.xStep / 1000
++    return abs(x - ranges.minX) < tolerance || abs(x - ranges.maxX) < tolerance
++  }
++
+   protected open fun drawGuidelines(
+     context: CartesianDrawingContext,
+     baseCanvasX: Float,
+@@ -390,6 +460,14 @@
+       canvas.save()
+       canvas.clipRect(layerBounds)
+ 
++      // No guideline where the chart starts or ends: the axis line already marks those edges, and
++      // a guideline on top of it is just a second line in the same place.
++      //
++      // The fullXRange test used to cover this on its own — that range began at the first entry,
++      // so the entry was a bound and its guideline was suppressed. Reserving space before the
++      // first entry moved the range's start earlier, which left the entry no longer a bound and
++      // brought its guideline back. Testing the data's own range as well says what was always
++      // meant. (MOB-2953)
+       if (lineValues == null) {
+         labelValues.forEach { x ->
+           val canvasX =
+@@ -399,7 +477,7 @@
+                 layoutDirectionMultiplier
+ 
+           guideline
+-            .takeUnless { x.isBoundOf(fullXRange) }
++            .takeUnless { x.isBoundOf(fullXRange) || isChartEdge(x) }
+             ?.drawVertical(this, canvasX, layerBounds.top, layerBounds.bottom)
+         }
+       } else {
+@@ -412,7 +490,7 @@
+               getLinesCorrectionX(x, fullXRange)
+ 
+           guideline
+-            .takeUnless { x.isBoundOf(fullXRange) }
++            .takeUnless { x.isBoundOf(fullXRange) || isChartEdge(x) }
+             ?.drawVertical(this, canvasX, layerBounds.top, layerBounds.bottom)
+         }
+       }
+@@ -438,61 +516,12 @@
+     if (lineDrawingOrder == LineDrawingOrder.OverLayers) drawLineAndTicks(context, axisDimensions)
+   }
+ 
++  // v3 computed unscalableStartPadding/unscalableEndPadding here but never applied them.
++  // Matching v3: no-op. No label padding shift.
+   override fun updateLayerDimensions(
+     context: CartesianMeasuringContext,
+     layerDimensions: MutableCartesianLayerDimensions,
+-  ) {
+-    val label = label ?: return
+-    val ranges = context.ranges
+-    val maxLabelWidth =
+-      context.getMaxLabelWidth(layerDimensions, context.internalGetFullXRange(layerDimensions))
+-    val firstLabelValue = itemPlacer.getFirstLabelValue(context, maxLabelWidth)
+-    val lastLabelValue = itemPlacer.getLastLabelValue(context, maxLabelWidth)
+-    if (firstLabelValue != null) {
+-      val text =
+-        valueFormatter.formatForAxis(
+-          context = context,
+-          value = firstLabelValue,
+-          verticalAxisPosition = null,
+-        )
+-      var unscalableStartPadding =
+-        label
+-          .getWidth(
+-            context = context,
+-            text = text,
+-            rotationDegrees = labelRotationDegrees,
+-            pad = true,
+-          )
+-          .half
+-      if (!context.zoomEnabled) {
+-        unscalableStartPadding -=
+-          (firstLabelValue - ranges.minX).toFloat() * layerDimensions.xSpacing
+-      }
+-      layerDimensions.ensureValuesAtLeast(unscalableStartPadding = unscalableStartPadding)
+-    }
+-    if (lastLabelValue != null) {
+-      val text =
+-        valueFormatter.formatForAxis(
+-          context = context,
+-          value = lastLabelValue,
+-          verticalAxisPosition = null,
+-        )
+-      var unscalableEndPadding =
+-        label
+-          .getWidth(
+-            context = context,
+-            text = text,
+-            rotationDegrees = labelRotationDegrees,
+-            pad = true,
+-          )
+-          .half
+-      if (!context.zoomEnabled) {
+-        unscalableEndPadding -=
+-          ((ranges.maxX - lastLabelValue) * layerDimensions.xSpacing).toFloat()
+-      }
+-      layerDimensions.ensureValuesAtLeast(unscalableEndPadding = unscalableEndPadding)
+-    }
+-  }
++  ): Unit = Unit
+ 
+   override fun updateLayerMargins(
+     context: CartesianMeasuringContext,
+@@ -545,12 +574,16 @@
+                 )
+               }
+               .orZero
+-          (labelHeight + titleComponentHeight + lineThickness + outwardTickLength)
++          (labelHeight +
++              titleComponentHeight +
++              (if (position == Axis.Position.Horizontal.Bottom) lineThickness else 0f) +
++              outwardTickLength)
+             .coerceAtMost(canvasSize.height / MAX_HEIGHT_DIVISOR)
+             .coerceIn(size.min.pixels, size.max.pixels)
+         }
+         is Size.Fixed -> size.value.pixels
+         is Size.Fraction -> canvasSize.height * size.fraction
++        is Size.Scroll -> size.value.pixels
+         is Size.Text ->
+           label
+             ?.getHeight(context = this, text = size.text, rotationDegrees = labelRotationDegrees)
+@@ -635,6 +668,18 @@
+     super.equals(other) && other is HorizontalAxis<*> && itemPlacer == other.itemPlacer
+ 
+   override fun hashCode(): Int = 31 * super.hashCode() + itemPlacer.hashCode()
++
++  /**
++   * Vertical separator lines drawn at specific X positions on the chart. Used for period boundaries
++   * (month/week starts), data boundaries (minX/maxX), etc.
++   *
++   * @property values the X data values where separator lines should be drawn.
++   * @property line the line component used to draw separators.
++   */
++  public data class Separators(
++    public val values: List<Double>,
++    public val line: LineComponent,
++  )
+ 
+   /** Determines for what _x_ values a [HorizontalAxis] displays labels, ticks, and guidelines. */
+   public interface ItemPlacer {
+@@ -777,6 +822,7 @@
+       title: (ExtraStore) -> CharSequence? = { null },
+       tickPosition: TickPosition = TickPosition.Outside,
+       lineDrawingOrder: LineDrawingOrder = LineDrawingOrder.UnderLayers,
++      separators: Separators? = null,
+     ): HorizontalAxis<Axis.Position.Horizontal.Top> =
+       remember(
+         line,
+@@ -792,6 +838,7 @@
+         title,
+         tickPosition,
+         lineDrawingOrder,
++        separators,
+       ) {
+         HorizontalAxis(
+           Axis.Position.Horizontal.Top,
+@@ -808,6 +855,7 @@
+           title,
+           tickPosition,
+           lineDrawingOrder,
++          separators,
+         )
+       }
+ 
+@@ -827,6 +875,9 @@
+       title: (ExtraStore) -> CharSequence? = { null },
+       tickPosition: TickPosition = TickPosition.Outside,
+       lineDrawingOrder: LineDrawingOrder = LineDrawingOrder.UnderLayers,
++      separators: Separators? = null,
++      labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
++      labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
+     ): HorizontalAxis<Axis.Position.Horizontal.Bottom> =
+       remember(
+         line,
+@@ -842,6 +893,9 @@
+         title,
+         tickPosition,
+         lineDrawingOrder,
++        separators,
++        labelVerticalMode,
++        labelHorizontalPosition,
+       ) {
+         HorizontalAxis(
+           Axis.Position.Horizontal.Bottom,
+@@ -858,7 +912,20 @@
+           title,
+           tickPosition,
+           lineDrawingOrder,
++          separators,
++          labelVerticalMode,
++          labelHorizontalPosition,
+         )
+       }
+   }
++
++  /** Controls vertical label placement relative to the tick. */
++  public enum class LabelVerticalMode {
++    /** Labels at axis line, no tick offset (v3 Position.Horizontal.End). */
++    Inside,
++    /** Labels at tick midpoint. */
++    Center,
++    /** Labels below full tick (v3 Position.Horizontal.Start). */
++    Outside,
++  }
+ }

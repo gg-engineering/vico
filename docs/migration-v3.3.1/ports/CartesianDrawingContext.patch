@@ -1,0 +1,11 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/CartesianDrawingContext.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/CartesianDrawingContext.kt
+@@ -52,7 +52,7 @@
+ internal fun CartesianDrawingContext.getMaxScrollDistance() =
+   getMaxScrollDistance(layerBounds.width, layerDimensions)
+ 
+-internal fun CartesianDrawingContext.getVisibleXRange() =
++public fun CartesianDrawingContext.getVisibleXRange(): ClosedFloatingPointRange<Double> =
+   getVisibleXRange(layerDimensions, layerBounds, scroll)
+ 
+ internal fun CartesianDrawingContext(

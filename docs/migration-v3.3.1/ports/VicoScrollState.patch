@@ -1,0 +1,250 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/VicoScrollState.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/VicoScrollState.kt
+@@ -27,8 +27,11 @@
+ import androidx.compose.runtime.saveable.Saver
+ import androidx.compose.runtime.saveable.rememberSaveable
+ import androidx.compose.ui.geometry.Rect
++import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
+ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
++import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
+ import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
++import com.patrykandpatrick.vico.compose.cartesian.layer.MonotoneInterpolator
+ import com.patrykandpatrick.vico.compose.common.rangeWith
+ import kotlinx.coroutines.flow.MutableSharedFlow
+ import kotlinx.coroutines.flow.first
+@@ -44,23 +47,195 @@
+   private val autoScrollAnimationSpec: AnimationSpec<Float>
+   private val _value: MutableFloatState
+   private val _maxValue = mutableFloatStateOf(0f)
+-  private var initialScrollHandled: Boolean
++  internal var initialScrollHandled: Boolean
+   private var context: CartesianMeasuringContext? = null
++  internal var drawingContext: CartesianDrawingContext? = null
++
++  /** Whether the chart is currently being scrolled by the user. */
++  public val isScrolling: Boolean
++    get() = scrollableState.isScrollInProgress
++
++  /**
++   * True only while the user is actively scrolling the chart — the scroll position is changing.
++   * Distinct from [isScrolling], which also returns true during a marker scrub (the underlying
++   * `ScrollableState` stays active so `nestedScroll` blocks a parent `LazyColumn`, even though the
++   * position is frozen). Use this when you want to treat scrolling and scrubbing as separate
++   * concerns.
++   */
++  public val isUserScrolling: Boolean
++    get() = isScrolling && !isScrollFrozen
++
+   private var layerDimensions: CartesianLayerDimensions? = null
+   private var bounds: Rect? = null
++
++  /** Converts a data X value to a scroll pixel value. Returns null if context not ready. */
++  internal fun xToScrollValue(x: Double): Float? {
++    val ctx = context ?: return null
++    val dims = layerDimensions ?: return null
++    return dims.startPadding + ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
++  }
++
++  /** The currently visible X data range, or null if context not ready. */
++  public val visibleXRange: ClosedFloatingPointRange<Double>?
++    get() {
++      val ctx = context ?: return null
++      val dims = layerDimensions ?: return null
++      val b = bounds ?: return null
++      if (dims.xSpacing == 0f) return null
++      val start = ctx.ranges.minX + (value - dims.startPadding) / dims.xSpacing * ctx.ranges.xStep
++      val end = start + b.width / dims.xSpacing * ctx.ranges.xStep
++      return start..end
++    }
++
++  /**
++   * Like [xToScrollValue] but subtracts [paddingXStep] * xSpacing — positions X at padding offset
++   * from edge.
++   */
++  /**
++   * The scroll value that puts [x] at the start of the visible window, behind the space the layer
++   * reserves before its first entry.
++   *
++   * That space is [CartesianLayerDimensions.startPadding], which the chart sets from its own
++   * startInsetXStep, so there is nothing for a caller to pass: adding it and taking the same amount
++   * off again leaves the offset alone. Being told it separately only made it possible to be told a
++   * different figure from the one the chart reserved. (MOB-2953)
++   */
++  internal fun xToScrollValueBehindStartInset(x: Double): Float? {
++    val ctx = context ?: return null
++    val dims = layerDimensions ?: return null
++    return ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
++  }
++
++  /**
++   * Converts a scroll pixel value to a data X value. Uses current scroll if [scrollPixels] is null.
++   */
++  internal fun scrollValueToX(scrollPixels: Float? = null): Double? {
++    val ctx = context ?: return null
++    val dims = layerDimensions ?: return null
++    if (dims.xSpacing == 0f) return null
++    val px = scrollPixels ?: value
++    return ctx.ranges.minX + (px - dims.startPadding) / dims.xSpacing * ctx.ranges.xStep
++  }
++
++  /**
++   * Returns the aligned axis label X values visible in the current scroll window. For custom label
++   * placement (e.g., month boundaries, Sundays), pass [labelProvider] which receives the visible X
++   * range and full X range.
++   */
++  public fun getVisibleAxisLabels(
++    itemPlacer: HorizontalAxis.ItemPlacer? = null,
++    labelProvider:
++      ((
++        visibleXRange: ClosedFloatingPointRange<Double>,
++        fullXRange: ClosedFloatingPointRange<Double>,
++      ) -> List<Double>)? =
++      null,
++  ): List<Double> {
++    val ctx = context ?: return emptyList()
++    val range = visibleXRange ?: return emptyList()
++    val fullRange = ctx.ranges.minX..ctx.ranges.maxX
++
++    // If consumer provides a label provider, use it
++    if (labelProvider != null) return labelProvider(range, fullRange)
++
++    // If item placer provided, use its label values via drawing context
++    if (itemPlacer != null && drawingContext != null) {
++      return itemPlacer.getLabelValues(drawingContext!!, range, fullRange, 0f)
++    }
++
++    // Default: aligned labels at xStep intervals
++    val xStep = ctx.ranges.xStep
++    if (xStep <= 0.0) return emptyList()
++    val labels = mutableListOf<Double>()
++    val startK = kotlin.math.ceil((range.start - ctx.ranges.minX) / xStep).toLong()
++    val endK = kotlin.math.floor((range.endInclusive - ctx.ranges.minX) / xStep).toLong()
++    for (k in startK..endK) {
++      labels.add(ctx.ranges.minX + k * xStep)
++    }
++    return labels
++  }
++
++  /**
++   * Computes interpolated Y values for the given [xValues] across all series in the current model.
++   * Returns one inner list per series. Each inner list has the same size as [xValues]. Uses the
++   * current chart model's data — returns empty if model not ready. Zero Pair allocation — works
++   * directly on Entry objects.
++   */
++  public fun getInterpolatedYValues(
++    xValues: List<Double>,
++    interpolationType: InterpolationType = InterpolationType.MONOTONE,
++  ): List<List<Double?>> {
++    val ctx = context ?: return emptyList()
++    val model = ctx.model
++    val results = mutableListOf<List<Double?>>()
++    for (layerModel in model.models) {
++      if (layerModel is LineCartesianLayerModel) {
++        for (series in layerModel.series) {
++          val yValues =
++            when (interpolationType) {
++              InterpolationType.MONOTONE ->
++                xValues.map { x ->
++                  MonotoneInterpolator.getYAtXFromEntries(x, series)
++                }
++              InterpolationType.LINEAR ->
++                xValues.map { x ->
++                  linearInterpolateFromEntries(x, series)
++                }
++            }
++          results.add(yValues)
++        }
++      }
++    }
++    return results
++  }
++
++  private fun linearInterpolateFromEntries(
++    x: Double,
++    entries: List<LineCartesianLayerModel.Entry>,
++  ): Double? {
++    if (entries.size < 2) return entries.firstOrNull()?.y
++    if (x < entries.first().x) return null
++    if (x > entries.last().x) return null
++    for (i in 0 until entries.lastIndex) {
++      val x0 = entries[i].x
++      val y0 = entries[i].y
++      val x1 = entries[i + 1].x
++      val y1 = entries[i + 1].y
++      if (x in x0..x1) {
++        val t = (x - x0) / (x1 - x0)
++        return y0 + t * (y1 - y0)
++      }
++    }
++    return null
++  }
++
+   internal val scrollEnabled: Boolean
+   internal val consumedXDeltas = MutableSharedFlow<Float>(extraBufferCapacity = 1)
+   internal val unconsumedXDeltas = MutableSharedFlow<Float>(extraBufferCapacity = 1)
+ 
++  /**
++   * When true, scroll position is frozen (scrubbing). ScrollableState still claims deltas to keep
++   * nestedScroll active (blocking parent LazyColumn), but position doesn't change.
++   */
++  internal var isScrollFrozen: Boolean = false
++
+   internal val scrollableState = ScrollableState { delta ->
+-    val oldValue = value
+-    value += delta
+-    val consumedValue = value - oldValue
+-    if (oldValue + delta == value) {
++    if (isScrollFrozen || !scrollEnabled) {
++      // Claim the delta (nestedScroll sees it as consumed → parent blocked)
++      // but don't actually move the scroll position.
++      // !scrollEnabled: chart is non-scrollable (TOTAL/single-window) but scrollable modifier
++      // stays enabled so nestedScroll blocks parent during scrubbing.
+       delta
+     } else {
+-      unconsumedXDeltas.tryEmit(consumedValue - delta)
+-      consumedValue
++      val oldValue = value
++      value += delta
++      val consumedValue = value - oldValue
++      if (oldValue + delta == value) {
++        delta
++      } else {
++        unconsumedXDeltas.tryEmit(consumedValue - delta)
++        consumedValue
++      }
+     }
+   }
+ 
+@@ -147,8 +322,12 @@
+     this.context = context
+     this.layerDimensions = layerDimensions
+     this.bounds = bounds
++    val prevMaxValue = maxValue
+     maxValue = context.getMaxScrollDistance(bounds.width, layerDimensions)
+-    if (!initialScrollHandled) {
++    if (
++      !initialScrollHandled ||
++        (prevMaxValue != maxValue && prevMaxValue > 0f && !scrollableState.isScrollInProgress)
++    ) {
+       value = initialScroll.getValue(context, layerDimensions, bounds, maxValue)
+       initialScrollHandled = true
+     }
+@@ -226,15 +405,17 @@
+   autoScroll: Scroll = initialScroll,
+   autoScrollCondition: AutoScrollCondition = AutoScrollCondition.Never,
+   autoScrollAnimationSpec: AnimationSpec<Float> = spring(),
++  key: Any? = null,
+ ): VicoScrollState =
+   rememberSaveable(
++    key,
+     scrollEnabled,
+     initialScroll,
+     autoScroll,
+     autoScrollCondition,
+     autoScrollAnimationSpec,
+     saver =
+-      remember(scrollEnabled, initialScroll, autoScrollCondition, autoScrollAnimationSpec) {
++      remember(key, scrollEnabled, initialScroll, autoScrollCondition, autoScrollAnimationSpec) {
+         VicoScrollState.Saver(
+           scrollEnabled,
+           initialScroll,

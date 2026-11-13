@@ -1,0 +1,474 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/axis/VerticalAxis.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/axis/VerticalAxis.kt
+@@ -30,6 +30,7 @@
+ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
+ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+ import com.patrykandpatrick.vico.compose.cartesian.data.formatForAxis
++import com.patrykandpatrick.vico.compose.cartesian.getMaxScrollDistance
+ import com.patrykandpatrick.vico.compose.cartesian.layer.*
+ import com.patrykandpatrick.vico.compose.common.Defaults
+ import com.patrykandpatrick.vico.compose.common.Position
+@@ -72,6 +73,7 @@
+   title: (ExtraStore) -> CharSequence?,
+   tickPosition: TickPosition,
+   lineDrawingOrder: LineDrawingOrder,
++  public val markerDecoration: MarkerDecoration? = null,
+ ) :
+   BaseAxis<P>(
+     line,
+@@ -154,6 +156,8 @@
+     }
+   }
+ 
++  // getBoundedVisibleWidth removed — replaced by getBoundedContentX position math
++
+   override fun drawUnderLayers(
+     context: CartesianDrawingContext,
+     axisDimensions: Map<Axis.Position, AxisDimensions>,
+@@ -166,26 +170,37 @@
+         itemPlacer.getLineValues(this, bounds.height, maxLabelHeight, position)
+           ?: itemPlacer.getLabelValues(this, bounds.height, maxLabelHeight, position)
+ 
++      if (yRange.length == 0.0) return@with // Guard: avoid NaN from division by zero
++
+       lineValues.forEach { lineValue ->
+         centerY =
+           bounds.bottom - bounds.height * ((lineValue - yRange.minY) / yRange.length).toFloat() +
+             getLineCanvasYCorrection(guidelineThickness, lineValue)
+ 
+-        guideline
+-          ?.takeIf {
+-            isNotInRestrictedBounds(
+-              left = layerBounds.left,
+-              top = centerY - guidelineThickness.half,
+-              right = layerBounds.right,
+-              bottom = centerY + guidelineThickness.half,
+-            )
+-          }
+-          ?.drawHorizontal(
++        if (size is Size.Scroll) {
++          guideline?.drawHorizontal(
+             context = context,
+             left = layerBounds.left,
+             right = layerBounds.right,
+             y = centerY,
+           )
++        } else {
++          guideline
++            ?.takeIf {
++              isNotInRestrictedBounds(
++                left = layerBounds.left,
++                top = centerY - guidelineThickness.half,
++                right = layerBounds.right,
++                bottom = centerY + guidelineThickness.half,
++              )
++            }
++            ?.drawHorizontal(
++              context = context,
++              left = layerBounds.left,
++              right = layerBounds.right,
++              y = centerY,
++            )
++        }
+       }
+       if (lineDrawingOrder == LineDrawingOrder.UnderLayers) drawLineAndTicks(context)
+     }
+@@ -202,8 +217,9 @@
+       val labelValues = itemPlacer.getLabelValues(this, bounds.height, maxLabelHeight, position)
+       val tickLeftX = getTickLeftX()
+       val tickRightX = tickLeftX + lineThickness + this.tickLength
+-      val labelX = if (areLabelsOutsideAtStartOrInsideAtEnd == isLtr) tickLeftX else tickRightX
++      val labelX = bounds.center.x
+       val yRange = ranges.getYRange(position)
++      if (yRange.length == 0.0) return // Guard: avoid NaN from division by zero
+ 
+       labelValues.forEach { labelValue ->
+         val tickCenterY =
+@@ -240,23 +256,118 @@
+               TITLE_ABS_ROTATION_DEGREES
+             },
+           maxHeight = bounds.height.toInt(),
++        )
++      }
++    }
++  }
++
++  /**
++   * Draws the marker decoration alone — the goal pill and anything else pinned to a y value.
++   *
++   * Kept apart from [drawOverLayers] so the chart can draw it outside the clip that hides the strip
++   * before a chart's start. Like a marker, it is an overlay on a value the caller chose rather than
++   * part of the data, and it sits at the axis where that clip does not apply. (MOB-2953)
++   */
++  public open fun drawMarkerDecoration(context: CartesianDrawingContext) {
++    with(context) {
++      // Draw marker decoration (e.g., goal weight indicator)
++      markerDecoration?.let { decoration ->
++        val yRange = ranges.getYRange(position)
++        val markerY = decoration.y(model.extraStore)
++        val markerLabel = decoration.label(model.extraStore)
++
++        // Use animated range — marker moves smoothly with Y-axis animation
++        val canvasY =
++          if (yRange.length > 0 && markerY in yRange.minY..yRange.maxY) {
++            bounds.bottom - bounds.height * ((markerY - yRange.minY) / yRange.length).toFloat()
++          } else if (markerY < yRange.minY) {
++            // Below range — position below the axis
++            bounds.bottom + decoration.outsideRangeOffset.pixels
++          } else {
++            // Above range — position above the axis
++            bounds.top - decoration.outsideRangeOffset.pixels
++          }
++
++        val markerX = bounds.center.x
++
++        decoration.markerComponent?.draw(
++          context = this,
++          text = markerLabel,
++          x = markerX,
++          y = canvasY,
++          horizontalPosition = Position.Horizontal.Center,
++          verticalPosition = decoration.verticalLabelPosition,
++          rotationDegrees = decoration.labelRotationDegrees,
+         )
+       }
+     }
+   }
+ 
++  /**
++   * Draws the axis line and its ticks alone, without the guidelines or labels.
++   *
++   * A chart scrolls without end, and a start and end are imposed on it by not drawing beyond them.
++   * The line is the exception: it is what marks where the chart begins, so it is drawn whether or
++   * not it falls inside. The guidelines and labels are not — they describe the data, so they stop
++   * where the data does. (MOB-2953)
++   */
++  internal fun drawLineOnly(context: CartesianDrawingContext) {
++    with(context) {
++      val line = line ?: return
++      line.drawVertical(context, chartEdgeX(), layerBounds.top, layerBounds.bottom)
++    }
++  }
++
++  /**
++   * Where this axis's line belongs: the point the chart starts or ends at.
++   *
++   * Not the axis's own bounds, which is the gutter it reserves. An axis that reserves nothing has
++   * zero-width bounds against the canvas edge, and the line was landing there with half of it
++   * off-screen. The chart's start is its first entry — the layer's left edge plus the padding
++   * reserved before it — and it moves with the scroll. (MOB-2953)
++   */
++  private fun CartesianDrawingContext.chartEdgeX(): Float {
++    val firstEntryX = layerBounds.left + layerDimensions.startPadding - scroll
++    return if (position.isLeft(this)) {
++      firstEntryX
++    } else {
++      // Symmetric with the start: the last entry's position, plus whatever is reserved after it.
++      // This was pinned to layerBounds.right, so the end line showed against the right edge
++      // wherever the scroll happened to be — marking an end that was not there.
++      val contentWidth =
++        ((ranges.maxX - ranges.minX) / ranges.xStep).toFloat() * layerDimensions.xSpacing
++      firstEntryX + contentWidth + layerDimensions.endPadding
++    }
++  }
++
+   private fun drawLineAndTicks(context: CartesianDrawingContext) {
+     with(context) {
+       val topExtension = if (itemPlacer.getShiftTopLines(this)) tickThickness else 0f
+       val bottomExtension = tickThickness
++      val isScrollMode = size is Size.Scroll
++
++      val effectiveScroll =
++        if (isScrollMode) {
++          if (position.isLeft(this)) -scroll else getMaxScrollDistance() - scroll
++        } else 0f
++
++      val lineX = chartEdgeX()
++
++      if (isScrollMode) {
++        canvas.save()
++        canvas.clipRect(
++          layerBounds.left - lineThickness,
++          bounds.top,
++          layerBounds.right + lineThickness,
++          bounds.bottom,
++        )
++      }
++
++      // No effectiveScroll: chartEdgeX already carries the scroll, and adding it twice put the
++      // line at neither edge.
+       line?.drawVertical(
+         context = context,
+-        x =
+-          if (position.isLeft(this)) {
+-            bounds.right - lineThickness.half
+-          } else {
+-            bounds.left + lineThickness.half
+-          },
++        x = lineX,
+         top = bounds.top - topExtension,
+         bottom = bounds.bottom + bottomExtension,
+       )
+@@ -272,14 +383,27 @@
+             getLineCanvasYCorrection(tickThickness, labelValue)
+         tick?.drawHorizontal(
+           context = context,
+-          left = tickLeftX,
+-          right = tickRightX,
++          left = tickLeftX + effectiveScroll,
++          right = tickRightX + effectiveScroll,
+           y = tickCenterY,
+         )
+       }
++
++      if (isScrollMode) {
++        canvas.restore()
++      }
+     }
+   }
+ 
++  private var scrollValue: Float = 0f
++  private var maxScroll: Float = 0f
++
++  /** Called by CartesianChartHost before prepare() — provides current scroll for dynamic margin. */
++  internal fun updateScrollState(scroll: Float, maxScroll: Float) {
++    this.scrollValue = scroll
++    this.maxScroll = maxScroll
++  }
++
+   override fun updateLayerDimensions(
+     context: CartesianMeasuringContext,
+     layerDimensions: MutableCartesianLayerDimensions,
+@@ -326,7 +450,7 @@
+           text = label,
+           x = labelX,
+           y = tickCenterY + offsetFromTickCenterY,
+-          horizontalPosition = textHorizontalPosition,
++          horizontalPosition = Position.Horizontal.Center,
+           verticalPosition = verticalLabelPosition,
+           rotationDegrees = labelRotationDegrees,
+           maxWidth = (maxLabelWidth ?: (layerBounds.width.half - this.tickLength)).toInt(),
+@@ -363,9 +487,16 @@
+     model: CartesianChartModel,
+   ) {
+     val width = getWidth(context, layerHeight)
++    val scrollSize = size as? Size.Scroll
++    val scrollOffset =
++      if (scrollSize != null && scrollSize.isLabelsScrollable) {
++        if (position == Axis.Position.Vertical.Start) scrollValue else maxScroll - scrollValue
++      } else 0f
++    val effectiveWidth = (width - scrollOffset).coerceAtLeast(0f)
+     when (position) {
+-      Axis.Position.Vertical.Start -> horizontalLayerMargins.ensureValuesAtLeast(start = width)
+-      Axis.Position.Vertical.End -> horizontalLayerMargins.ensureValuesAtLeast(end = width)
++      Axis.Position.Vertical.Start ->
++        horizontalLayerMargins.ensureValuesAtLeast(start = effectiveWidth)
++      Axis.Position.Vertical.End -> horizontalLayerMargins.ensureValuesAtLeast(end = effectiveWidth)
+     }
+   }
+ 
+@@ -396,6 +527,24 @@
+       )
+     }
+ 
++  /**
++   * The marker decoration's width, which the gutter has to be at least as wide as.
++   *
++   * The marker is centred on the gutter, so a pill wider than the gutter overhangs it by half the
++   * difference — and on an end axis that half runs straight off the canvas. Sizing the gutter to
++   * fit it is what keeps the marker whole without moving it off centre. (MOB-2953)
++   */
++  private fun CartesianMeasuringContext.getMarkerDecorationWidth(): Float =
++    markerDecoration
++      ?.let { decoration ->
++        decoration.markerComponent?.getWidth(
++          context = this,
++          text = decoration.label(model.extraStore),
++          rotationDegrees = decoration.labelRotationDegrees,
++        )
++      }
++      .orZero
++
+   protected open fun getWidth(context: CartesianMeasuringContext, freeHeight: Float): Float =
+     with(context) {
+       val outwardTickLength =
+@@ -404,37 +553,42 @@
+           TickPosition.Inside -> 0f
+           TickPosition.Cross -> this.tickLength / 2
+         }
+-      when (size) {
+-        is Size.Auto -> {
+-          val titleComponentWidth =
+-            title(model.extraStore)
+-              ?.let { title ->
+-                titleComponent?.getWidth(
+-                  context = this,
+-                  text = title,
+-                  rotationDegrees = TITLE_ABS_ROTATION_DEGREES,
+-                  maxHeight = bounds.height.toInt(),
+-                )
++      val markerWidth = getMarkerDecorationWidth()
++      max(
++        markerWidth,
++        when (size) {
++          is Size.Auto -> {
++            val titleComponentWidth =
++              title(model.extraStore)
++                ?.let { title ->
++                  titleComponent?.getWidth(
++                    context = this,
++                    text = title,
++                    rotationDegrees = TITLE_ABS_ROTATION_DEGREES,
++                    maxHeight = bounds.height.toInt(),
++                  )
++                }
++                .orZero
++            val labelSpace =
++              when (horizontalLabelPosition) {
++                Outside ->
++                  ceil(getMaxLabelWidth(freeHeight)).also { maxLabelWidth = it } + outwardTickLength
++                Inside -> 0f
+               }
+-              .orZero
+-          val labelSpace =
+-            when (horizontalLabelPosition) {
+-              Outside ->
+-                ceil(getMaxLabelWidth(freeHeight)).also { maxLabelWidth = it } + outwardTickLength
+-              Inside -> 0f
+-            }
+-          (labelSpace + titleComponentWidth + lineThickness).coerceIn(
+-            size.min.pixels,
+-            size.max.pixels,
+-          )
+-        }
+-        is Size.Fixed -> size.value.pixels
+-        is Size.Fraction -> canvasSize.width * size.fraction
+-        is Size.Text ->
+-          titleComponent
+-            ?.getWidth(context = this, text = size.text, rotationDegrees = labelRotationDegrees)
+-            .orZero + outwardTickLength + lineThickness.half
+-      }
++            (labelSpace + titleComponentWidth + lineThickness).coerceIn(
++              size.min.pixels,
++              size.max.pixels,
++            )
++          }
++          is Size.Fixed -> size.value.pixels
++          is Size.Fraction -> canvasSize.width * size.fraction
++          is Size.Scroll -> size.value.pixels
++          is Size.Text ->
++            titleComponent
++              ?.getWidth(context = this, text = size.text, rotationDegrees = labelRotationDegrees)
++              .orZero + outwardTickLength + lineThickness.half
++        },
++      )
+     }
+ 
+   protected fun CartesianMeasuringContext.getMaxLabelHeight(): Float =
+@@ -492,6 +646,7 @@
+     title: (ExtraStore) -> CharSequence? = this.title,
+     tickPosition: TickPosition = this.tickPosition,
+     lineDrawingOrder: LineDrawingOrder = this.lineDrawingOrder,
++    markerDecoration: MarkerDecoration? = this.markerDecoration,
+   ): VerticalAxis<P> =
+     VerticalAxis(
+       position,
+@@ -510,6 +665,7 @@
+       title,
+       tickPosition,
+       lineDrawingOrder,
++      markerDecoration,
+     )
+ 
+   override fun equals(other: Any?): Boolean =
+@@ -517,15 +673,41 @@
+       other is VerticalAxis<*> &&
+       horizontalLabelPosition == other.horizontalLabelPosition &&
+       verticalLabelPosition == other.verticalLabelPosition &&
+-      itemPlacer == other.itemPlacer
++      itemPlacer == other.itemPlacer &&
++      markerDecoration == other.markerDecoration
+ 
+   override fun hashCode(): Int {
+     var result = super.hashCode()
+     result = 31 * result + horizontalLabelPosition.hashCode()
+     result = 31 * result + verticalLabelPosition.hashCode()
+     result = 31 * result + itemPlacer.hashCode()
++    result = 31 * result + (markerDecoration?.hashCode() ?: 0)
+     return result
+   }
++
++  /**
++   * A decoration drawn on the vertical axis at a specific Y value. Used for goal markers, reference
++   * lines, etc.
++   *
++   * @property y returns the Y data value for the decoration position.
++   * @property markerComponent the text component used to draw the decoration label.
++   * @property label returns the label text to display.
++   * @property verticalLabelPosition vertical alignment of the label relative to the Y position.
++   * @property labelRotationDegrees label rotation.
++   * @property outsideRangeOffset how far outside the plot to place the marker when its _y_ lies
++   *   beyond the visible range. A [Dp], because the figure is a design one: as a raw pixel count
++   *   the gap shrank as screen density rose, so 60 px meant 20 dp on a 3x phone and 30 dp on a 2x
++   *   one. The chart reserves this much room plus the marker's own half-height, so the marker is
++   *   fully visible above and below without being moved.
++   */
++  public data class MarkerDecoration(
++    public val y: (ExtraStore) -> Double,
++    public val markerComponent: TextComponent? = null,
++    public val label: (ExtraStore) -> CharSequence = { "" },
++    public val verticalLabelPosition: Position.Vertical = Position.Vertical.Center,
++    public val labelRotationDegrees: Float = 0f,
++    public val outsideRangeOffset: Dp = 20.dp,
++  )
+ 
+   /**
+    * Defines the horizontal position of each of a vertical axis’s labels relative to the axis line.
+@@ -647,6 +829,7 @@
+       tickPosition: TickPosition =
+         if (horizontalLabelPosition == Outside) TickPosition.Outside else TickPosition.Inside,
+       lineDrawingOrder: LineDrawingOrder = LineDrawingOrder.UnderLayers,
++      markerDecoration: MarkerDecoration? = null,
+     ): VerticalAxis<Axis.Position.Vertical.Start> =
+       remember(
+         line,
+@@ -664,6 +847,7 @@
+         title,
+         tickPosition,
+         lineDrawingOrder,
++        markerDecoration,
+       ) {
+         VerticalAxis(
+           Axis.Position.Vertical.Start,
+@@ -682,6 +866,7 @@
+           title,
+           tickPosition,
+           lineDrawingOrder,
++          markerDecoration,
+         )
+       }
+ 
+@@ -704,6 +889,7 @@
+       tickPosition: TickPosition =
+         if (horizontalLabelPosition == Outside) TickPosition.Outside else TickPosition.Inside,
+       lineDrawingOrder: LineDrawingOrder = LineDrawingOrder.UnderLayers,
++      markerDecoration: MarkerDecoration? = null,
+     ): VerticalAxis<Axis.Position.Vertical.End> =
+       remember(
+         line,
+@@ -721,6 +907,7 @@
+         title,
+         tickPosition,
+         lineDrawingOrder,
++        markerDecoration,
+       ) {
+         VerticalAxis(
+           Axis.Position.Vertical.End,
+@@ -739,6 +926,7 @@
+           title,
+           tickPosition,
+           lineDrawingOrder,
++          markerDecoration,
+         )
+       }
+   }
