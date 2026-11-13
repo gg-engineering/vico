@@ -73,6 +73,22 @@ protected constructor(
     > =
     CartesianLayerDrawingModelInterpolator.line(),
   protected val drawingModelKey: ExtraStore.Key<LineCartesianLayerDrawingModel>,
+  /** Restates this layer's y values against the axis being drawn. */
+  protected val yMapper: CartesianLayerYMapper? = null,
+  /** Whether this layer's points can be marked. */
+  public val markerTargetsEnabled: Boolean = true,
+  /**
+   * Whether this layer's y values join the range shared with the other layers. A layer drawn
+   * through a [yMapper] is in the axis's units already, so counting its raw values would open the
+   * axis to a span nothing is drawn in — a pulse of 60 against a weight of 150.
+   */
+  public val contributesYRange: Boolean = yMapper == null,
+  /**
+   * Whether to ignore the cached point positions and compute from the live range. A layer sharing
+   * another's scroll-aware range moves without a data push, which is exactly when the cache is
+   * stale.
+   */
+  public val alwaysUseLiveRange: Boolean = false,
 ) : BaseCartesianLayer<LineCartesianLayerModel>() {
   // The host reads these to drive the scroll-aware Y range; both are constructor-private.
   internal val internalRangeProvider: CartesianLayerRangeProvider
@@ -532,6 +548,10 @@ protected constructor(
         LineCartesianLayerDrawingModel,
       > =
       CartesianLayerDrawingModelInterpolator.line(),
+    yMapper: CartesianLayerYMapper? = null,
+    markerTargetsEnabled: Boolean = true,
+    alwaysUseLiveRange: Boolean = false,
+    contributesYRange: Boolean = yMapper == null,
   ) : this(
     lineProvider,
     pointSpacing,
@@ -539,6 +559,10 @@ protected constructor(
     verticalAxisPosition,
     drawingModelInterpolator,
     ExtraStore.Key(),
+    yMapper,
+    markerTargetsEnabled,
+    contributesYRange,
+    alwaysUseLiveRange,
   )
 
   override fun drawInternal(context: CartesianDrawingContext, model: LineCartesianLayerModel) {
@@ -569,11 +593,19 @@ protected constructor(
       // allocates one offscreen buffer per frame rather than one per series. With a shared layer,
       // overlapping series also composite opaquely before the group is faded, which avoids
       // inter-series bleed-through.
-      saveLayer(opacity = drawingModel?.opacity ?: 1f)
+      saveLayer(opacity = (drawingModel?.opacity ?: 1f) * (yMapper?.opacity() ?: 1f))
 
       model.series.forEachIndexed { seriesIndex, series ->
         val seriesKey = model.seriesKeys[seriesIndex]
-        val pointInfoMap = drawingModel?.getOrNull(seriesIndex)
+        // The cached positions are baked against the range at model-build time, so a layer whose
+        // range moves without a push must compute from the live one. Only the positions are
+        // skipped — the sweep fraction and the opacity above still come from the drawing model.
+        val pointInfoMap =
+          if (rangeProvider is ScrollAwareRangeProvider || alwaysUseLiveRange) {
+            null
+          } else {
+            drawingModel?.getOrNull(seriesIndex)
+          }
 
         linePath.rewind()
         val line = lineProvider.getLineOrThrow(seriesKey, seriesIndex, model.extraStore)
@@ -632,6 +664,7 @@ protected constructor(
     canvasY: Float,
     lineFillBitmap: ImageBitmap,
   ) {
+    if (!markerTargetsEnabled) return
     if (canvasX <= layerBounds.left - 1 || canvasX >= layerBounds.right + 1) return
     val limitedCanvasY = canvasY.coerceIn(layerBounds.top, layerBounds.bottom)
     _markerTargets
@@ -657,6 +690,7 @@ protected constructor(
     canvasY: Float,
     color: Color,
   ) {
+    if (!markerTargetsEnabled) return
     if (canvasX <= layerBounds.left - 1 || canvasX >= layerBounds.right + 1) return
     val limitedCanvasY = canvasY.coerceIn(layerBounds.top, layerBounds.bottom)
     _markerTargets
@@ -776,10 +810,15 @@ protected constructor(
       drawingStart +
         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
 
+    val mappedY = yMapper?.map(series, ranges.getTargetYRange(verticalAxisPosition), visibleXRange)
+    val mappedIndex =
+      if (mappedY != null) series.withIndex().associate { it.value.x to it.index } else null
+
     fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
       val yRange = ranges.getYRange(verticalAxisPosition)
+      val y = mappedIndex?.get(entry.x)?.let { mappedY?.getOrNull(it) } ?: entry.y
       return layerBounds.bottom -
-        (pointInfoMap?.get(entry.x)?.y ?: ((entry.y - yRange.minY) / yRange.length).toFloat()) *
+        (pointInfoMap?.get(entry.x)?.y ?: ((y - yRange.minY) / yRange.length).toFloat()) *
           layerBounds.height
     }
 
@@ -851,10 +890,15 @@ protected constructor(
       drawingStart +
         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
 
+    val mappedY = yMapper?.map(series, ranges.getTargetYRange(verticalAxisPosition), visibleXRange)
+    val mappedIndex =
+      if (mappedY != null) series.withIndex().associate { it.value.x to it.index } else null
+
     fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
       val yRange = ranges.getYRange(verticalAxisPosition)
+      val y = mappedIndex?.get(entry.x)?.let { mappedY?.getOrNull(it) } ?: entry.y
       return layerBounds.bottom -
-        (pointInfoMap?.get(entry.x)?.y ?: ((entry.y - yRange.minY) / yRange.length).toFloat()) *
+        (pointInfoMap?.get(entry.x)?.y ?: ((y - yRange.minY) / yRange.length).toFloat()) *
           layerBounds.height
     }
 
@@ -921,6 +965,7 @@ protected constructor(
     chartRanges: MutableCartesianChartRanges,
     model: LineCartesianLayerModel,
   ) {
+    if (!contributesYRange) return
     var minY = model.minY
     var maxY = model.maxY
     model.series.forEachIndexed { seriesIndex, series ->
@@ -1006,6 +1051,10 @@ protected constructor(
         LineCartesianLayerDrawingModel,
       > =
       this.drawingModelInterpolator,
+    yMapper: CartesianLayerYMapper? = this.yMapper,
+    markerTargetsEnabled: Boolean = this.markerTargetsEnabled,
+    alwaysUseLiveRange: Boolean = this.alwaysUseLiveRange,
+    contributesYRange: Boolean = this.contributesYRange,
   ): LineCartesianLayer =
     LineCartesianLayer(
       lineProvider,
@@ -1014,6 +1063,9 @@ protected constructor(
       verticalAxisPosition,
       drawingModelInterpolator,
       drawingModelKey,
+      yMapper,
+      markerTargetsEnabled,
+      contributesYRange,
     )
 
   override fun equals(other: Any?): Boolean =
@@ -1090,6 +1142,10 @@ public fun rememberLineCartesianLayer(
     remember {
       CartesianLayerDrawingModelInterpolator.line()
     },
+  yMapper: CartesianLayerYMapper? = null,
+  markerTargetsEnabled: Boolean = true,
+  alwaysUseLiveRange: Boolean = false,
+  contributesYRange: Boolean = yMapper == null,
 ): LineCartesianLayer {
   var lineCartesianLayerWrapper by remember { ValueWrapper<LineCartesianLayer?>(null) }
   return remember(
@@ -1098,6 +1154,10 @@ public fun rememberLineCartesianLayer(
     rangeProvider,
     verticalAxisPosition,
     drawingModelInterpolator,
+    yMapper,
+    markerTargetsEnabled,
+    alwaysUseLiveRange,
+    contributesYRange,
   ) {
     val lineCartesianLayer =
       lineCartesianLayerWrapper?.copy(
@@ -1106,6 +1166,10 @@ public fun rememberLineCartesianLayer(
         rangeProvider,
         verticalAxisPosition,
         drawingModelInterpolator,
+        yMapper,
+        markerTargetsEnabled,
+        alwaysUseLiveRange,
+        contributesYRange,
       )
         ?: LineCartesianLayer(
           lineProvider,
@@ -1113,6 +1177,10 @@ public fun rememberLineCartesianLayer(
           rangeProvider,
           verticalAxisPosition,
           drawingModelInterpolator,
+          yMapper,
+          markerTargetsEnabled,
+          alwaysUseLiveRange,
+          contributesYRange,
         )
     lineCartesianLayerWrapper = lineCartesianLayer
     lineCartesianLayer
