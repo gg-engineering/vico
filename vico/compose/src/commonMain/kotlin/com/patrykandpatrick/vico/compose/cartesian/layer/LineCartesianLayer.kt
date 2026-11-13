@@ -615,6 +615,13 @@ protected constructor(
         val drawingStart =
           layerBounds.getStart(isLtr = isLtr) + drawingStartAlignmentCorrection - scroll
 
+        // Once per series, not once per pass: the index is a map over every reading, and the line
+        // and the points each built their own copy of it every frame.
+        val mappedY =
+          yMapper?.map(series, ranges.getTargetYRange(verticalAxisPosition), getVisibleXRange())
+        val mappedIndex =
+          if (mappedY != null) series.withIndex().associate { it.value.x to it.index } else null
+
         val points = mutableListOf<Offset>()
         val visibleIndexRange =
           collectPointsAndVisibleIndexRange(
@@ -624,6 +631,8 @@ protected constructor(
             pointInfoMap = pointInfoMap,
             drawFullLineLength = line.stroke is LineStroke.Dashed,
             points = points,
+            mappedY = mappedY,
+            mappedIndex = mappedIndex,
           )
 
         if (points.isNotEmpty() && !visibleIndexRange.isEmpty()) {
@@ -632,7 +641,9 @@ protected constructor(
 
         line.fillColor?.let { color ->
           line.draw(context, linePath, color, verticalAxisPosition)
-          forEachPointInBounds(series, drawingStart, pointInfoMap) { entry, x, y, _, _ ->
+          forEachPointInBounds(
+            series, drawingStart, pointInfoMap, mappedY = mappedY, mappedIndex = mappedIndex,
+          ) { entry, x, y, _, _ ->
             updateMarkerTargets(entry, seriesKey, x, y, color)
           }
         }
@@ -643,12 +654,16 @@ protected constructor(
             line.draw(context, linePath, lineCanvas, lineFillCanvas, verticalAxisPosition)
             lineCanvas.drawImage(lineFillBitmap, Offset.Zero, srcInPaint)
             canvas.drawImage(lineBitmap, Offset.Zero, EmptyPaint)
-            forEachPointInBounds(series, drawingStart, pointInfoMap) { entry, x, y, _, _ ->
+            forEachPointInBounds(
+              series, drawingStart, pointInfoMap, mappedY = mappedY, mappedIndex = mappedIndex,
+            ) { entry, x, y, _, _ ->
               updateMarkerTargets(entry, seriesKey, x, y, lineFillBitmap)
             }
           }
 
-        drawPointsAndDataLabels(line, series, seriesKey, seriesIndex, drawingStart, pointInfoMap)
+        drawPointsAndDataLabels(
+          line, series, seriesKey, seriesIndex, drawingStart, pointInfoMap, mappedY, mappedIndex,
+        )
       }
 
       canvas.restore()
@@ -705,6 +720,8 @@ protected constructor(
     seriesIndex: Int,
     drawingStart: Float,
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
+    mappedY: DoubleArray? = null,
+    mappedIndex: Map<Double, Int>? = null,
   ) {
     // forEachPointInBounds always runs one point past the edge, so the line can carry on to the
     // boundary instead of stopping at the last point inside. The line needs that; the dot on top
@@ -715,6 +732,8 @@ protected constructor(
       series = series,
       drawingStart = drawingStart,
       pointInfoMap = pointInfoMap,
+      mappedY = mappedY,
+      mappedIndex = mappedIndex,
     ) { chartEntry, x, y, previousX, nextX ->
       val point = line.pointProvider?.getPointOrThrow(chartEntry, model.extraStore)
       // Skipped rather than clipped: half a dot reads as a rendering fault, not as one sliding in.
@@ -803,6 +822,8 @@ protected constructor(
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
     drawFullLineLength: Boolean = false,
     points: MutableList<Offset>,
+    mappedY: DoubleArray? = null,
+    mappedIndex: Map<Double, Int>? = null,
   ): IntRange {
     val minX = ranges.minX
     val xStep = ranges.xStep
@@ -815,10 +836,6 @@ protected constructor(
     fun getDrawX(entry: LineCartesianLayerModel.Entry): Float =
       drawingStart +
         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
-
-    val mappedY = yMapper?.map(series, ranges.getTargetYRange(verticalAxisPosition), visibleXRange)
-    val mappedIndex =
-      if (mappedY != null) series.withIndex().associate { it.value.x to it.index } else null
 
     fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
       val yRange = ranges.getYRange(verticalAxisPosition)
@@ -873,6 +890,8 @@ protected constructor(
     drawingStart: Float,
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
     drawFullLineLength: Boolean = false,
+    mappedY: DoubleArray? = null,
+    mappedIndex: Map<Double, Int>? = null,
     action:
       (
         entry: LineCartesianLayerModel.Entry,
@@ -895,10 +914,6 @@ protected constructor(
     fun getDrawX(entry: LineCartesianLayerModel.Entry): Float =
       drawingStart +
         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
-
-    val mappedY = yMapper?.map(series, ranges.getTargetYRange(verticalAxisPosition), visibleXRange)
-    val mappedIndex =
-      if (mappedY != null) series.withIndex().associate { it.value.x to it.index } else null
 
     fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
       val yRange = ranges.getYRange(verticalAxisPosition)
