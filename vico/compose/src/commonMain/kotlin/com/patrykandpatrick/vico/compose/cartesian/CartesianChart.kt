@@ -71,6 +71,8 @@ internal constructor(
   internal val marker: CartesianMarker? = null,
   protected val markerVisibilityListener: CartesianMarkerVisibilityListener? = null,
   internal val layerPadding: ((ExtraStore) -> CartesianLayerPadding) = { CartesianLayerPadding() },
+  /** How many x labels to fit across the plot, or 0 to leave the spacing alone. */
+  public val visibleLabelsCount: Double = 0.0,
   protected val legend: Legend<CartesianMeasuringContext, CartesianDrawingContext>? = null,
   protected val fadingEdges: FadingEdges? = null,
   protected val decorations: List<Decoration> = emptyList(),
@@ -196,6 +198,7 @@ internal constructor(
     marker: CartesianMarker? = null,
     markerVisibilityListener: CartesianMarkerVisibilityListener? = null,
     layerPadding: ((ExtraStore) -> CartesianLayerPadding) = { CartesianLayerPadding() },
+    visibleLabelsCount: Double = 0.0,
     legend: Legend<CartesianMeasuringContext, CartesianDrawingContext>? = null,
     fadingEdges: FadingEdges? = null,
     decorations: List<Decoration> = emptyList(),
@@ -213,6 +216,7 @@ internal constructor(
     marker = marker,
     markerVisibilityListener = markerVisibilityListener,
     layerPadding = layerPadding,
+    visibleLabelsCount = visibleLabelsCount,
     legend = legend,
     fadingEdges = fadingEdges,
     decorations = decorations,
@@ -359,6 +363,10 @@ internal constructor(
         canvasSize.width - layerMargins.getRight(isLtr),
         canvasSize.height - layerMargins.bottom - legendHeight,
       )
+      if (visibleLabelsCount > 0) {
+        val scale = calculateLabelSpacingScale(layerDimensions)
+        if (scale != 1f) layerDimensions.scale(scale)
+      }
       axisManager.setAxesBounds(context, canvasSize, layerBounds, layerMargins)
       legend?.setBounds(
         left = 0,
@@ -367,6 +375,19 @@ internal constructor(
         bottom = layerBounds.bottom + layerMargins.bottom + legendHeight,
       )
     }
+  }
+
+  private fun calculateLabelSpacingScale(layerDimensions: MutableCartesianLayerDimensions): Float {
+    val availableWidth = layerBounds.width
+    val currentSpacing = layerDimensions.xSpacing
+    if (currentSpacing <= 0f || availableWidth <= 0f) return 1f
+    // The window holds the labels asked for plus the space reserved before the first entry, since
+    // that space is inside it. As a length it comes off the width rather than into the denominator;
+    // leaving it out over-spaces the labels by exactly the gap and pushes the last one off the
+    // edge.
+    val desiredSpacing =
+      (availableWidth - layerDimensions.unscalableStartPadding) / visibleLabelsCount
+    return (desiredSpacing / currentSpacing).toFloat()
   }
 
   private fun updatePersistentMarkers(extraStore: ExtraStore) {
@@ -552,6 +573,7 @@ internal constructor(
     marker: CartesianMarker? = this.marker,
     markerVisibilityListener: CartesianMarkerVisibilityListener? = this.markerVisibilityListener,
     layerPadding: ((ExtraStore) -> CartesianLayerPadding) = this.layerPadding,
+    visibleLabelsCount: Double = this.visibleLabelsCount,
     legend: Legend<CartesianMeasuringContext, CartesianDrawingContext>? = this.legend,
     fadingEdges: FadingEdges? = this.fadingEdges,
     decorations: List<Decoration> = this.decorations,
@@ -568,6 +590,7 @@ internal constructor(
       marker = marker,
       markerVisibilityListener = markerVisibilityListener,
       layerPadding = layerPadding,
+      visibleLabelsCount = visibleLabelsCount,
       legend = legend,
       fadingEdges = fadingEdges,
       decorations = decorations,
@@ -701,6 +724,7 @@ public fun rememberCartesianChart(
   marker: CartesianMarker? = null,
   markerVisibilityListener: CartesianMarkerVisibilityListener? = null,
   layerPadding: ((ExtraStore) -> CartesianLayerPadding) = { CartesianLayerPadding() },
+  visibleLabelsCount: Double = 0.0,
   legend: Legend<CartesianMeasuringContext, CartesianDrawingContext>? = null,
   fadingEdges: FadingEdges? = null,
   decorations: List<Decoration> = emptyList(),
@@ -720,6 +744,7 @@ public fun rememberCartesianChart(
     marker,
     markerVisibilityListener,
     layerPadding,
+    visibleLabelsCount,
     legend,
     fadingEdges,
     decorations,
@@ -737,6 +762,7 @@ public fun rememberCartesianChart(
         marker = marker,
         markerVisibilityListener = markerVisibilityListener,
         layerPadding = layerPadding,
+        visibleLabelsCount = visibleLabelsCount,
         legend = legend,
         fadingEdges = fadingEdges,
         decorations = decorations,
@@ -753,6 +779,7 @@ public fun rememberCartesianChart(
           marker = marker,
           markerVisibilityListener = markerVisibilityListener,
           layerPadding = layerPadding,
+          visibleLabelsCount = visibleLabelsCount,
           legend = legend,
           fadingEdges = fadingEdges,
           decorations = decorations,
