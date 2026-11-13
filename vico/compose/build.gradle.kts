@@ -15,10 +15,11 @@
  */
 
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import java.util.Properties
 
 plugins {
   `dokka-convention`
-  `publishing-convention`
+  `maven-publish`
   id("com.android.kotlin.multiplatform.library")
   alias(libs.plugins.composeMultiplatform)
   id("org.jetbrains.kotlin.multiplatform")
@@ -77,5 +78,33 @@ if (testTask != null) {
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     description = "Runs the vico-compose test suite on the JVM (Android host tests)."
     dependsOn("testAndroidHostTest")
+  }
+}
+
+// Published to GitHub Packages rather than Maven Central: a fork, consumed only by meApp.
+// `maven-publish` rather than the upstream convention plugin, which signs every publication
+// and we hold no GPG key.
+val localProps =
+  Properties().apply {
+    val f = rootProject.file("gradle-local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+  }
+
+publishing {
+  repositories {
+    maven {
+      name = "GitHubPackages"
+      url = uri("https://maven.pkg.github.com/gg-engineering/vico")
+      credentials {
+        username =
+          localProps.getProperty("gpr.user")
+            ?: project.findProperty("gpr.user") as String?
+            ?: System.getenv("GITHUB_USERNAME")
+        password =
+          localProps.getProperty("gpr.token")
+            ?: project.findProperty("gpr.token") as String?
+            ?: System.getenv("GITHUB_TOKEN")
+      }
+    }
   }
 }

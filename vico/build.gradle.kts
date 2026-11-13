@@ -19,7 +19,7 @@ import java.time.Year
 plugins { `dokka-convention` }
 
 subprojects {
-  group = "com.patrykandpatrick.vico"
+  group = "com.dmdbrands.lib"
   version = Versions.VICO
 }
 

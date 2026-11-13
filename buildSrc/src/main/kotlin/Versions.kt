@@ -17,5 +17,8 @@
 object Versions {
   const val COMPILE_SDK = 37
   const val MIN_SDK = 23
-  const val VICO = "3.3.1"
+  const val VICO = "5.0.0"
+
+  /** The upstream release this fork is rebased on. Our version line does not track theirs. */
+  const val UPSTREAM_BASE = "3.3.1"
 }

@@ -13,6 +13,7 @@
 !/.idea/copyright/
 /captures/
 /local.properties
+/gradle-local.properties
 build/
 xcshareddata/WorkspaceSettings.xcsettings
 xcuserdata/
