@@ -46,6 +46,9 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
+/** How close to a chart edge a separator may fall before it is suppressed. */
+private const val SEPARATOR_EDGE_EPSILON_PX = 1f
+
 /**
  * Draws horizontal axes. See the [BaseAxis] documentation for descriptions of the inherited
  * properties.
@@ -71,6 +74,12 @@ protected constructor(
   tickPosition: TickPosition,
   lineDrawingOrder: LineDrawingOrder,
   public val titlePosition: TitlePosition,
+  /** Lines marking period boundaries, drawn above the guidelines and below the data. */
+  public val separators: Separators? = null,
+  /** Where the label sits relative to the tick it belongs to. */
+  public val labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
+  /** How a label is aligned about its own _x_ value. */
+  public val labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
 ) :
   BaseAxis<P>(
     line,
@@ -161,11 +170,17 @@ protected constructor(
           TickPosition.Inside -> 0f
           TickPosition.Cross -> this.tickLength / 2
         }
+      val tickOffset =
+        when (labelVerticalMode) {
+          LabelVerticalMode.Inside -> 0f
+          LabelVerticalMode.Center -> outwardTickLength / 2
+          LabelVerticalMode.Outside -> outwardTickLength
+        }
       val textY =
         if (isTop) {
-          bounds.bottom - lineThickness - outwardTickLength
+          bounds.bottom - lineThickness - tickOffset
         } else {
-          bounds.top + lineThickness + outwardTickLength
+          bounds.top + lineThickness + tickOffset
         }
       val fullXRange = internalGetFullXRange(layerDimensions)
       val maxLabelWidth = getMaxLabelWidth(layerDimensions, fullXRange)
@@ -250,6 +265,7 @@ protected constructor(
       }
 
       drawGuidelines(context, baseCanvasX, fullXRange, labelValues, lineValues)
+      drawSeparators(context, baseCanvasX)
     }
   }
 
@@ -501,6 +517,32 @@ protected constructor(
       maxOf(lineRight, defaultLineRight)
     } else {
       defaultLineRight
+    }
+  }
+
+  /**
+   * Period boundaries. Unclipped, so the edge test does the work a clip would — which is why the
+   * trailing edge is exclusive, as it is for labels and guidelines: a separator marking the start
+   * of the next period does not belong to this one. A hairline of tolerance keeps a boundary that
+   * rounds fractionally inside from drawing half its stroke past the plot.
+   */
+  private fun drawSeparators(context: CartesianDrawingContext, baseCanvasX: Float) {
+    val sep = separators ?: return
+    if (sep.values.isEmpty()) return
+    with(context) {
+      sep.values.forEach { x ->
+        val canvasX =
+          baseCanvasX +
+            ((x - ranges.minX) / ranges.xStep).toFloat() *
+              layerDimensions.xSpacing *
+              layoutDirectionMultiplier
+        if (
+          canvasX < layerBounds.left || canvasX >= layerBounds.right - SEPARATOR_EDGE_EPSILON_PX
+        ) {
+          return@forEach
+        }
+        sep.line.drawVertical(context, canvasX, layerBounds.top, layerBounds.bottom)
+      }
     }
   }
 
@@ -805,6 +847,21 @@ protected constructor(
   }
 
   /** Determines for what _x_ values a [HorizontalAxis] displays labels, ticks, and guidelines. */
+  /** Period boundary lines, drawn above the guidelines and below the data. */
+  public data class Separators(public val values: List<Double>, public val line: LineComponent)
+
+  /** Where a label sits relative to the tick it belongs to. */
+  public enum class LabelVerticalMode {
+    /** Against the axis line, clear of the tick. */
+    Inside,
+
+    /** Halfway along the tick. */
+    Center,
+
+    /** Past the end of the tick. */
+    Outside,
+  }
+
   public interface ItemPlacer {
     /**
      * Returns a boolean indicating whether to shift the lines whose _x_ values are bounds of the
@@ -974,6 +1031,9 @@ protected constructor(
       tickPosition: TickPosition = TickPosition.Outside,
       lineDrawingOrder: LineDrawingOrder = LineDrawingOrder.UnderLayers,
       titlePosition: TitlePosition = TitlePosition.Side,
+      separators: Separators? = null,
+      labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
+      labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
     ): HorizontalAxis<Axis.Position.Horizontal.Top> =
       remember(
         line,
@@ -990,6 +1050,9 @@ protected constructor(
         tickPosition,
         lineDrawingOrder,
         titlePosition,
+        separators,
+        labelVerticalMode,
+        labelHorizontalPosition,
       ) {
         HorizontalAxis(
           Axis.Position.Horizontal.Top,
@@ -1007,6 +1070,9 @@ protected constructor(
           tickPosition,
           lineDrawingOrder,
           titlePosition,
+          separators,
+          labelVerticalMode,
+          labelHorizontalPosition,
         )
       }
 
@@ -1027,6 +1093,9 @@ protected constructor(
       tickPosition: TickPosition = TickPosition.Outside,
       lineDrawingOrder: LineDrawingOrder = LineDrawingOrder.UnderLayers,
       titlePosition: TitlePosition = TitlePosition.Side,
+      separators: Separators? = null,
+      labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
+      labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
     ): HorizontalAxis<Axis.Position.Horizontal.Bottom> =
       remember(
         line,
@@ -1043,6 +1112,9 @@ protected constructor(
         tickPosition,
         lineDrawingOrder,
         titlePosition,
+        separators,
+        labelVerticalMode,
+        labelHorizontalPosition,
       ) {
         HorizontalAxis(
           Axis.Position.Horizontal.Bottom,
@@ -1060,6 +1132,9 @@ protected constructor(
           tickPosition,
           lineDrawingOrder,
           titlePosition,
+          separators,
+          labelVerticalMode,
+          labelHorizontalPosition,
         )
       }
   }
