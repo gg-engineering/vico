@@ -16,8 +16,11 @@
 
 package com.patrykandpatrick.vico.compose.cartesian
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -25,7 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.data.*
+import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.MutableCartesianLayerDimensions
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController.Lock
@@ -34,6 +39,10 @@ import com.patrykandpatrick.vico.compose.common.*
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
@@ -98,9 +107,113 @@ public fun CartesianChartHost(
   val mutableRanges = remember { MutableCartesianChartRanges() }
   val modelWrapper by
     modelProducer.collectAsState(chart, animationSpec, initialAnimationSpec, mutableRanges)
-  val (model, previousModel, ranges, extraStore) = modelWrapper
+  // The producer's ranges are deliberately discarded — see below.
+  val (model, previousModel, _, extraStore) = modelWrapper
+
+  // Ranges are a function of two things — the model, and the chart's range providers — but the
+  // producer only ever computes them when a model is pushed. A window that arrives after that
+  // push (the common case when it is derived from the data that triggered the push) would then
+  // never reach the chart: it would keep serving the domain captured at push time, drawing its
+  // data far off-canvas, until some unrelated push happened to recompute them.
+  //
+  // Recomputing here makes the chart follow its providers. `chart` is the key because a provider
+  // change arrives as a new chart instance, and `copy` keeps the id, so nothing else notices.
+  val hostRanges = remember { MutableCartesianChartRanges() }
+  val initialRanges =
+    remember(chart, model) {
+      if (model == null) {
+        CartesianChartRanges.Empty
+      } else {
+        // The opening range is derived here, before the first frame, because this is where the
+        // ranges that frame draws with are decided. Deriving it a frame later left updateRanges
+        // below with no opinion to ask for, so the chart opened on the whole dataset's extent and
+        // then replaced it.
+        // Paired by position: indexOf matched on equals, so two layers configured alike both
+        // resolved to models[0] and the second drew against the first one's range.
+        chart.layers.forEachIndexed { index, layer ->
+          val provider =
+            (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
+              ?: return@forEachIndexed
+          val series =
+            (model.models.getOrNull(index) as? LineCartesianLayerModel)?.series
+              ?: return@forEachIndexed
+          // Once per model, not once per chart identity: rebuilding the cache resets the ticks,
+          // and re-seeding would discard a range the user had scrolled to. Asked separately
+          // because a model copied for new extras keeps its series instance.
+          if (provider.cachedSeries !== series) {
+            provider.cachedSeries = series
+            provider.buildCache(series)
+          }
+          // Seeded when the window moved, or when there is no settled axis to keep — never merely
+          // because the series changed. The seed describes the window the chart OPENS on, so
+          // re-seeding on any push dragged the axis back there from wherever the user had
+          // scrolled.
+          val window = provider.openingWindow(model.extraStore)
+          if (provider.cachedWindow != window || provider.currentTicks.isEmpty()) {
+            provider.cachedWindow = window
+            provider.seedFromWindow(model.extraStore)
+          }
+        }
+        hostRanges.reset()
+        chart.updateRanges(hostRanges, model)
+        hostRanges.toImmutable()
+      }
+    }
+
+  // Two scalars rather than a Pair, so an animation frame allocates nothing.
+  var animatedMinY by remember { mutableStateOf(Double.NaN) }
+  var animatedMaxY by remember { mutableStateOf(Double.NaN) }
+  var targetMinY by remember { mutableStateOf(Double.NaN) }
+  var targetMaxY by remember { mutableStateOf(Double.NaN) }
+
+  val firstScrollAwareProvider =
+    remember(chart) {
+      chart.layers
+        .mapNotNull {
+          (it as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
+        }
+        .firstOrNull()
+    }
+
+  // Before the animated range exists — the first frame carrying data — fall back to the seed the
+  // provider set synchronously, rather than flashing the whole model's Y range.
+  val effectiveMinY =
+    if (!animatedMinY.isNaN()) animatedMinY
+    else firstScrollAwareProvider?.seedMinY?.takeIf { !it.isNaN() } ?: Double.NaN
+  val effectiveMaxY =
+    if (!animatedMaxY.isNaN()) animatedMaxY
+    else firstScrollAwareProvider?.seedMaxY?.takeIf { !it.isNaN() } ?: Double.NaN
+
+  val ranges =
+    if (
+      !effectiveMinY.isNaN() &&
+        !effectiveMaxY.isNaN() &&
+        initialRanges !== CartesianChartRanges.Empty
+    ) {
+      AnimatedYCartesianChartRanges(
+        initialRanges,
+        effectiveMinY,
+        effectiveMaxY,
+        if (!targetMinY.isNaN()) targetMinY else effectiveMinY,
+        if (!targetMaxY.isNaN()) targetMaxY else effectiveMaxY,
+      )
+    } else {
+      initialRanges
+    }
 
   if (model != null) {
+    ScrollAwareRangeEffect(
+      chart,
+      model,
+      onAnimatedRange = { minY, maxY ->
+        animatedMinY = minY
+        animatedMaxY = maxY
+      },
+      onTargetRange = { minY, maxY ->
+        targetMinY = minY
+        targetMaxY = maxY
+      },
+    )
     CartesianChartHostImpl(
       chart,
       model,
@@ -233,6 +346,15 @@ internal fun CartesianChartHostImpl(
   val coroutineScope = rememberCoroutineScope()
   var lastHandledModel by remember { ValueWrapper(model) }
   val layerDimensions = remember { MutableCartesianLayerDimensions() }
+  val scrollAwareProviders =
+    remember(chart) {
+      chart.layers.mapNotNull { layer ->
+        (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
+      }
+    }
+  var lastEmittedScroll by remember { ValueWrapper(Float.NaN) }
+  var lastEmittedXSpacing by remember { ValueWrapper(Float.NaN) }
+  var lastEmittedChartWidth by remember { ValueWrapper(Float.NaN) }
   val measureLayerDimensions = remember { MutableCartesianLayerDimensions() }
   val measureExtras =
     remember(chart, measuringContext, measureLayerDimensions, chartAreaHeight) {
@@ -367,8 +489,242 @@ internal fun CartesianChartHostImpl(
           MutableDrawScope(this),
         )
 
+      scrollState.drawingContext = drawingContext
+
+      // The window the layers settle their Y range off. Computed once, and only when the viewport
+      // actually moved — the draw pass runs for reasons that leave it untouched.
+      if (scrollAwareProviders.isNotEmpty() && layerDimensions.xSpacing > 0f) {
+        val scrollPixels = scrollState.value
+        val xSpacing = layerDimensions.xSpacing
+        val chartWidth = chart.layerBounds.width
+        if (
+          scrollPixels != lastEmittedScroll ||
+            xSpacing != lastEmittedXSpacing ||
+            chartWidth != lastEmittedChartWidth
+        ) {
+          lastEmittedScroll = scrollPixels
+          lastEmittedXSpacing = xSpacing
+          lastEmittedChartWidth = chartWidth
+          val visibleRange =
+            measuringContext.value.getVisibleXRange(
+              layerDimensions,
+              chart.layerBounds,
+              scrollPixels,
+            )
+          val scrollInfo =
+            ScrollAwareRangeProvider.ScrollInfo(
+              scrollPixels,
+              xSpacing,
+              chartWidth,
+              visibleRange.start,
+              visibleRange.endInclusive,
+            )
+          scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+        }
+      }
+
       chart.draw(drawingContext)
       measuringContext.value.cacheStore.purge()
     }
   }
+}
+
+/**
+ * Manages [ScrollAwareRangeProvider] lifecycle following iOS-like animation pattern:
+ *
+ * **iOS approach**: Labels cross-fade (opacity), chart content animates positionally, ~250ms. **Our
+ * approximation**: Labels swap instantly, chart content animates via range interpolation.
+ *
+ * Fixes applied:
+ * - Animatable initialized AFTER cache build (prevents flash from 0→actual on first load)
+ * - Layer index resolved via chart.layers.indexOf (correct multi-layer mapping)
+ * - NaN sentinel for uninitialized state (prevents premature animation)
+ * - key(provider) ensures correct Compose state tracking per provider identity
+ */
+/**
+ * How long the scroll must be still before the marker's resting content is told the window.
+ *
+ * The same figure [ScrollAwareRangeProvider] settles its Y range on, so the text beside the chart
+ * and the axis it describes come to rest together.
+ */
+private const val MARKER_SETTLE_MS = 100L
+
+@OptIn(FlowPreview::class)
+@Composable
+private fun ScrollAwareRangeEffect(
+  chart: CartesianChart,
+  model: CartesianChartModel,
+  flingBehavior: FlingBehavior? = null,
+  onAnimatedRange: (minY: Double, maxY: Double) -> Unit,
+  onTargetRange: (minY: Double, maxY: Double) -> Unit = { _, _ -> },
+) {
+  // Deduplicate by provider identity — same instance shared by multiple layers
+  // only processes once (uses the first layer for buildCache)
+  val providers =
+    remember(chart) {
+      chart.layers
+        .mapNotNull { layer ->
+          if (layer is LineCartesianLayer) {
+            (layer.internalRangeProvider as? ScrollAwareRangeProvider)?.let { it to layer }
+          } else {
+            null
+          }
+        }
+        .distinctBy { it.first }
+    }
+  if (providers.isEmpty()) return
+
+  providers.forEach { (provider, layer) ->
+    // key(provider) ensures Compose tracks state per provider identity,
+    // even if the providers list order changes between recompositions.
+    key(provider) {
+      val layerIndex = remember(chart, layer) { chart.layers.indexOf(layer) }
+
+      val animMinY = remember { Animatable(Float.NaN) }
+      val animMaxY = remember { Animatable(Float.NaN) }
+      var isFirstScrollUpdate by remember { mutableStateOf(true) }
+
+      // The cache and the opening range are built during composition, above — this measures the
+      // window the chart actually opened on and corrects the range if it differs.
+      // Animatables are NOT reset — they animate from old range to new range.
+      LaunchedEffect(model) {
+        model.models.getOrNull(layerIndex) as? LineCartesianLayerModel ?: return@LaunchedEffect
+
+        // Wait for first Canvas draw to provide visible-window scroll info.
+        isFirstScrollUpdate = true
+        val firstScrollInfo = provider.scrollUpdates.first()
+        val visibleEntries = provider.computeVisibleEntries(firstScrollInfo)
+        val xRange = firstScrollInfo.visibleXStart..firstScrollInfo.visibleXEnd
+        val result = visibleEntries?.let { provider.computeDisplayRange(it, xRange) }
+        if (result != null) {
+          val (range, ticks) = result
+          provider.currentMinY = range.start
+          provider.currentMaxY = range.endInclusive
+          provider.currentTicks = ticks
+          onTargetRange(range.start, range.endInclusive)
+          if (animMinY.value.isNaN()) {
+            // First ever render — snap (no animation from NaN)
+            animMinY.snapTo(range.start.toFloat())
+            animMaxY.snapTo(range.endInclusive.toFloat())
+            onAnimatedRange(range.start, range.endInclusive)
+          } else {
+            // Model changed (e.g., metric switch) — animate from old to new
+            launch { animMinY.animateTo(range.start.toFloat(), tween(provider.animDurationMs)) }
+            launch {
+              animMaxY.animateTo(range.endInclusive.toFloat(), tween(provider.animDurationMs))
+            }
+          }
+        }
+        isFirstScrollUpdate = false
+      }
+
+      // Subsequent scroll events: debounced, so the axis moves once, after the scroll settles.
+      //
+      // Deliberately not sampled during the scroll. Recomputing as the window moves makes the axis
+      // and every line keyed to it shift continuously under the finger, which reads as the chart
+      // dancing rather than as it being responsive. One settled correction, animated, is the
+      // behaviour this is meant to have.
+      LaunchedEffect(provider) {
+        provider.scrollUpdates
+          .debounce(provider.debounceMs)
+          // collectLatest, not collect: the block waits out a 300 ms animation, and a second
+          // settle can land inside that. Cancelling leaves the animatables wherever they reached
+          // and the next animation continues from there, rather than queueing behind the old one.
+          .collectLatest { scrollInfo ->
+            if (!provider.isCacheReady || isFirstScrollUpdate) return@collectLatest
+            if (animMinY.value.isNaN()) return@collectLatest
+
+            val visibleEntries = provider.computeVisibleEntries(scrollInfo) ?: return@collectLatest
+            val xRange = scrollInfo.visibleXStart..scrollInfo.visibleXEnd
+            val result =
+              provider.computeDisplayRange(visibleEntries, xRange) ?: return@collectLatest
+            val (range, newTicks) = result
+            val targetMinY = range.start.toFloat()
+            val targetMaxY = range.endInclusive.toFloat()
+
+            // Announced before the no-movement check below, not after it. A layer that transforms
+            // its series against the window has to recompute on every settle, including the ones
+            // that leave the y range exactly where it was — scrolling between two windows that
+            // happen to share an axis is precisely when it would otherwise keep a scaling that
+            // belonged to the window the user has left.
+            provider.settleEpoch++
+
+            if (
+              abs(targetMinY - animMinY.value) < 0.01f && abs(targetMaxY - animMaxY.value) < 0.01f
+            )
+              return@collectLatest
+
+            // Swapped as the animation starts, not when it ends: a tick is a data value, drawn at
+            // whatever pixel the currently animating range puts it at, so it slides into place
+            // rather than appearing there. Held back to the end it would pop instead.
+            provider.currentTicks = newTicks
+            onTargetRange(targetMinY.toDouble(), targetMaxY.toDouble())
+
+            // Animate range — chart content scales smoothly
+            val minJob = launch {
+              animMinY.animateTo(targetMinY, tween(provider.animDurationMs))
+            }
+            val maxJob = launch {
+              animMaxY.animateTo(targetMaxY, tween(provider.animDurationMs))
+            }
+            minJob.join()
+            maxJob.join()
+          }
+      }
+
+      // Push animated values to Compose State on each animation frame
+      LaunchedEffect(Unit) {
+        snapshotFlow { animMinY.value to animMaxY.value }
+          .collect { (minY, maxY) ->
+            // Skip NaN frames (before initialization)
+            if (minY.isNaN() || maxY.isNaN()) return@collect
+            provider.currentMinY = minY.toDouble()
+            provider.currentMaxY = maxY.toDouble()
+            onAnimatedRange(minY.toDouble(), maxY.toDouble())
+          }
+      }
+    } // end key(provider)
+  }
+}
+
+/**
+ * A lightweight [CartesianChartRanges] wrapper that overrides Y range with animated values but
+ * delegates everything else to the original ranges. No reset/rebuild needed per frame.
+ */
+private class AnimatedYCartesianChartRanges(
+  private val delegate: CartesianChartRanges,
+  animMinY: Double,
+  animMaxY: Double,
+  targetMinY: Double = animMinY,
+  targetMaxY: Double = animMaxY,
+) : CartesianChartRanges {
+  override val minX: Double
+    get() = delegate.minX
+
+  override val maxX: Double
+    get() = delegate.maxX
+
+  override val xStep: Double
+    get() = delegate.xStep
+
+  // Single YRange instance — reused for all getYRange() calls in this frame.
+  private val yRange =
+    object : CartesianChartRanges.YRange {
+      override val minY: Double = animMinY
+      override val maxY: Double = animMaxY
+      override val length: Double = (animMaxY - animMinY).coerceAtLeast(1e-6)
+    }
+
+  private val targetRange =
+    object : CartesianChartRanges.YRange {
+      override val minY: Double = targetMinY
+      override val maxY: Double = targetMaxY
+      override val length: Double = (targetMaxY - targetMinY).coerceAtLeast(1e-6)
+    }
+
+  override fun getYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
+    yRange
+
+  override fun getTargetYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
+    targetRange
 }

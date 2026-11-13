@@ -74,6 +74,13 @@ protected constructor(
     CartesianLayerDrawingModelInterpolator.line(),
   protected val drawingModelKey: ExtraStore.Key<LineCartesianLayerDrawingModel>,
 ) : BaseCartesianLayer<LineCartesianLayerModel>() {
+  // The host reads these to drive the scroll-aware Y range; both are constructor-private.
+  internal val internalRangeProvider: CartesianLayerRangeProvider
+    get() = rangeProvider
+
+  internal val internalVerticalAxisPosition: Axis.Position.Vertical?
+    get() = verticalAxisPosition
+
   /**
    * Defines the appearance of a line in a line chart.
    *
