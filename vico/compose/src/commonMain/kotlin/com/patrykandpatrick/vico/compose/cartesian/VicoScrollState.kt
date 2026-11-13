@@ -34,9 +34,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Rect
+import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
 import com.patrykandpatrick.vico.compose.common.rangeWith
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 
@@ -61,16 +64,26 @@ public class VicoScrollState {
   internal val consumedXDeltas = MutableSharedFlow<Float>(extraBufferCapacity = 1)
   internal val unconsumedXDeltas = MutableSharedFlow<Float>(extraBufferCapacity = 1)
   private var previousScrollLayout: ScrollLayout? = null
+  internal var drawingContext: CartesianDrawingContext? = null
+
+  /** Holds the scroll position still while a scrub is in progress. */
+  internal var isScrollFrozen: Boolean = false
 
   internal val scrollableState = ScrollableState { delta ->
-    val oldValue = value
-    value += delta
-    val consumedValue = value - oldValue
-    if (oldValue + delta == value) {
+    if (isScrollFrozen || !scrollEnabled) {
+      // Claim the delta without moving, so nestedScroll reads it as consumed and a parent list
+      // cannot steal a scrub. A non-scrollable chart keeps the scrollable modifier for this.
       delta
     } else {
-      unconsumedXDeltas.tryEmit(consumedValue - delta)
-      consumedValue
+      val oldValue = value
+      value += delta
+      val consumedValue = value - oldValue
+      if (oldValue + delta == value) {
+        delta
+      } else {
+        unconsumedXDeltas.tryEmit(consumedValue - delta)
+        consumedValue
+      }
     }
   }
 
@@ -148,6 +161,87 @@ public class VicoScrollState {
     value = 0f,
     initialScrollHandled = false,
   )
+
+  public val isScrolling: Boolean
+    get() = scrollableState.isScrollInProgress
+
+  /**
+   * True only while the user is moving the chart. [isScrolling] is also true during a scrub,
+   * because the scrollable state stays active to block a parent list even though the position is
+   * frozen.
+   */
+  public val isUserScrolling: Boolean
+    get() = isScrolling && !isScrollFrozen
+
+  /** The visible x data range, or null before the chart has been measured. */
+  public val visibleXRange: ClosedFloatingPointRange<Double>?
+    get() {
+      val ctx = context ?: return null
+      val dims = layerDimensions ?: return null
+      val b = bounds ?: return null
+      if (dims.xSpacing == 0f) return null
+      val start = ctx.ranges.minX + (value - dims.startPadding) / dims.xSpacing * ctx.ranges.xStep
+      return start..(start + b.width / dims.xSpacing * ctx.ranges.xStep)
+    }
+
+  /** The scroll value that puts [x] at the start of the visible window. */
+  public fun xToScrollValue(x: Double): Float? {
+    val ctx = context ?: return null
+    val dims = layerDimensions ?: return null
+    return dims.startPadding + ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
+  }
+
+  /**
+   * As [xToScrollValue], but behind the space the layer reserves before its first entry.
+   *
+   * That space is [CartesianLayerDimensions.startPadding], which the chart sets itself, so there is
+   * nothing for a caller to pass — and being told it separately only made it possible to be told a
+   * different figure from the one actually reserved.
+   */
+  public fun xToScrollValueBehindStartInset(x: Double): Float? {
+    val ctx = context ?: return null
+    val dims = layerDimensions ?: return null
+    return ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
+  }
+
+  /** The data x value at [scrollPixels], or at the current scroll when null. */
+  public fun scrollValueToX(scrollPixels: Float? = null): Double? {
+    val ctx = context ?: return null
+    val dims = layerDimensions ?: return null
+    if (dims.xSpacing == 0f) return null
+    return ctx.ranges.minX +
+      ((scrollPixels ?: value) - dims.startPadding) / dims.xSpacing * ctx.ranges.xStep
+  }
+
+  /**
+   * The axis label x values inside the current scroll window.
+   *
+   * [labelProvider] takes precedence, for placement a step cannot express — month boundaries, or
+   * Sundays. Otherwise [itemPlacer] is asked, and failing both the labels fall on xStep intervals.
+   */
+  public fun getVisibleAxisLabels(
+    itemPlacer: HorizontalAxis.ItemPlacer? = null,
+    labelProvider:
+      ((
+        visibleXRange: ClosedFloatingPointRange<Double>,
+        fullXRange: ClosedFloatingPointRange<Double>,
+      ) -> List<Double>)? =
+      null,
+  ): List<Double> {
+    val ctx = context ?: return emptyList()
+    val range = visibleXRange ?: return emptyList()
+    val fullRange = ctx.ranges.minX..ctx.ranges.maxX
+    if (labelProvider != null) return labelProvider(range, fullRange)
+    val context = drawingContext
+    if (itemPlacer != null && context != null) {
+      return itemPlacer.getLabelValues(context, range, fullRange, 0f)
+    }
+    val xStep = ctx.ranges.xStep
+    if (xStep <= 0.0) return emptyList()
+    val first = ceil((range.start - ctx.ranges.minX) / xStep).toLong()
+    val last = floor((range.endInclusive - ctx.ranges.minX) / xStep).toLong()
+    return (first..last).map { ctx.ranges.minX + it * xStep }
+  }
 
   private inline fun withUpdated(
     block: (CartesianMeasuringContext, CartesianLayerDimensions, Rect) -> Unit
