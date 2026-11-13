@@ -1072,6 +1072,7 @@ protected constructor(
       yMapper,
       markerTargetsEnabled,
       contributesYRange,
+      alwaysUseLiveRange,
     )
 
   override fun equals(other: Any?): Boolean =
