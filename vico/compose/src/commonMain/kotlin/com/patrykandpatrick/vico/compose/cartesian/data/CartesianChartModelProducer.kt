@@ -207,10 +207,23 @@ public class CartesianChartModelProducer {
 
   private suspend fun getDispatcher(): CoroutineDispatcher {
     val context = currentCoroutineContext()
-    return if (context[PreviewContextKey] != null) Dispatchers.Unconfined else Dispatchers.Default
+    return if (context[PreviewContextKey] != null || context[InlineUpdateContextKey] != null) {
+      Dispatchers.Unconfined
+    } else {
+      Dispatchers.Default
+    }
   }
 }
 
 internal object PreviewContextKey : CoroutineContext.Key<PreviewContext>
 
 internal object PreviewContext : AbstractCoroutineContextElement(PreviewContextKey)
+
+internal object InlineUpdateContextKey : CoroutineContext.Key<InlineUpdateContext>
+
+/**
+ * Runs a data update on the caller instead of hopping to a background dispatcher. A test that
+ * pushes data and asserts in the same breath needs the commit to have happened by the time
+ * [CartesianChartModelProducer.runTransaction] returns.
+ */
+public object InlineUpdateContext : AbstractCoroutineContextElement(InlineUpdateContextKey)

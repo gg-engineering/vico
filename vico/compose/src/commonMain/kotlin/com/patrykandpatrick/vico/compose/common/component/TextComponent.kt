@@ -284,7 +284,9 @@ public open class TextComponent(
       var measuredText = text ?: ""
       if (pad) {
         measuredText = buildAnnotatedString {
-          append(text)
+          // Appending the nullable `text` writes the literal "null", so measuring with no text
+          // reserved four characters. Every Size.Auto axis sizes its gutter through here.
+          append(measuredText)
           repeat((lineCount - measuredText.lines().size).coerceAtLeast(0)) { append('\n') }
         }
       }
