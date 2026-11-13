@@ -398,8 +398,11 @@ internal constructor(
       axisManager.drawOverLayers(context)
       decorations.forEach { it.drawOverLayers(context) }
       forEachPersistentMarker { marker, targets -> marker.drawOverLayers(context, targets) }
-      legend?.draw(context)
       if (drawMarker) marker?.drawOverLayers(context, markerTargets)
+      legend?.draw(context)
+      // The label line carries one or the other: the marker's own label while a point is marked,
+      // its resting text the rest of the time.
+      if (drawMarker) marker?.drawLabels(context, markerTargets) else marker?.drawResting(context)
     }
   }
 

@@ -32,6 +32,25 @@ public interface CartesianMarker : CartesianLayerMarginUpdater<CartesianChartMod
   /** Draws content over the [CartesianLayer]s. */
   public fun drawOverLayers(context: CartesianDrawingContext, targets: List<Target>) {}
 
+  /**
+   * Draws the marker's text, after the axis decorations and the legend.
+   *
+   * Separate from [drawOverLayers] because the two want different heights in the stack: a label
+   * belongs above everything, while a guideline and its indicators belong above the lines but below
+   * whatever the axes draw on top. One pass cannot be in both places, and running the same pass
+   * twice draws everything in it twice.
+   */
+  public fun drawLabels(context: CartesianDrawingContext, targets: List<Target>) {}
+
+  /** Draws whatever the marker shows while nothing is marked, on the line [drawLabels] uses. */
+  public fun drawResting(context: CartesianDrawingContext) {}
+
+  /**
+   * The window has come to rest. Formatting resting text here rather than per frame keeps it off
+   * the draw path; the draw then reads what this left behind.
+   */
+  public fun onScrollSettled(visibleXRange: ClosedFloatingPointRange<Double>) {}
+
   /** Houses information on an object to be marked. */
   public interface Target {
     /** The _x_ value. */

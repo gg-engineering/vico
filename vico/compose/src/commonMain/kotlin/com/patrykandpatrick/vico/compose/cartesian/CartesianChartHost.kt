@@ -40,6 +40,7 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
@@ -355,6 +356,25 @@ internal fun CartesianChartHostImpl(
         (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
       }
     }
+  // Every window the draw pass sees, for the marker's resting content. Kept apart from the range
+  // providers' feed below, which exists only when a layer has such a provider — a resting label is
+  // drawn whatever the layers happen to be.
+  val visibleXRanges = remember {
+    MutableSharedFlow<ClosedFloatingPointRange<Double>>(replay = 1, extraBufferCapacity = 8)
+  }
+
+  // Keyed on the model too, not the scroll alone. The resting text is formatted from the window and
+  // from the caller's own state, and new data can change the second without touching the first — a
+  // card naming the week its entries fall in would go on naming the old one. Restarting replays the
+  // last window, so it re-formats.
+  LaunchedEffect(chart.marker, visibleXRanges, model) {
+    val marker = chart.marker ?: return@LaunchedEffect
+    // The first window as soon as there is one, so the resting text is on the opening frame rather
+    // than a debounce late; thereafter only once the scroll has come to rest.
+    marker.onScrollSettled(visibleXRanges.first())
+    visibleXRanges.debounce(MARKER_SETTLE_MS).collect(marker::onScrollSettled)
+  }
+
   var lastEmittedScroll by remember { ValueWrapper(Float.NaN) }
   var lastEmittedXSpacing by remember { ValueWrapper(Float.NaN) }
   var lastEmittedChartWidth by remember { ValueWrapper(Float.NaN) }
@@ -498,7 +518,9 @@ internal fun CartesianChartHostImpl(
 
       // The window the layers settle their Y range off. Computed once, and only when the viewport
       // actually moved — the draw pass runs for reasons that leave it untouched.
-      if (scrollAwareProviders.isNotEmpty() && layerDimensions.xSpacing > 0f) {
+      if (
+        (scrollAwareProviders.isNotEmpty() || chart.marker != null) && layerDimensions.xSpacing > 0f
+      ) {
         val scrollPixels = scrollState.value
         val xSpacing = layerDimensions.xSpacing
         val chartWidth = chart.layerBounds.width
@@ -516,6 +538,7 @@ internal fun CartesianChartHostImpl(
               chart.layerBounds,
               scrollPixels,
             )
+          if (chart.marker != null) visibleXRanges.tryEmit(visibleRange)
           val scrollInfo =
             ScrollAwareRangeProvider.ScrollInfo(
               scrollPixels,
@@ -524,7 +547,9 @@ internal fun CartesianChartHostImpl(
               visibleRange.start,
               visibleRange.endInclusive,
             )
-          scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+          if (scrollAwareProviders.isNotEmpty()) {
+            scrollAwareProviders.forEach { it.scrollUpdates.tryEmit(scrollInfo) }
+          }
         }
       }
 
