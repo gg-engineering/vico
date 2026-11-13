@@ -35,6 +35,7 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.MutableCartesianLayerDi
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController.Lock
 import com.patrykandpatrick.vico.compose.cartesian.marker.Interaction
+import com.patrykandpatrick.vico.compose.cartesian.marker.ScrubMarkerController
 import com.patrykandpatrick.vico.compose.common.*
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
@@ -105,6 +106,7 @@ public fun CartesianChartHost(
   chartAreaHeight: Dp = Defaults.CARTESIAN_CHART_AREA_HEIGHT.dp,
   placeholder: @Composable BoxScope.() -> Unit = {},
   flingBehavior: FlingBehavior? = null,
+  initialMarkerX: Double? = null,
 ) {
   val mutableRanges = remember { MutableCartesianChartRanges() }
   val modelWrapper by
@@ -227,6 +229,7 @@ public fun CartesianChartHost(
       previousModel,
       extraStore,
       flingBehavior,
+      initialMarkerX,
     )
   } else {
     ChartHostBox(modifier, chartAreaHeight, measureExtras = null) { placeholder() }
@@ -329,11 +332,37 @@ internal fun CartesianChartHostImpl(
   previousModel: CartesianChartModel? = null,
   extraStore: ExtraStore = ExtraStore.Empty,
   flingBehavior: FlingBehavior? = null,
+  initialMarkerX: Double? = null,
 ) {
   var markerX by rememberSaveable { mutableStateOf<Double?>(null) }
   var markerSeriesIndex by rememberSaveable { mutableStateOf<Int?>(null) }
   var lastAcceptedInteraction by
     rememberSaveable(saver = Interaction.Saver) { mutableStateOf(null) }
+
+  val scrubController = chart.markerController as? ScrubMarkerController
+
+  // The caller owns whether there is a marker at all. Keyed on initialMarkerX, not Unit: running
+  // once per host meant a caller that cleared its marker — because the marked entry was deleted,
+  // or fell outside the window — never reached the chart, which went on drawing the dot and its
+  // guideline at an x the caller no longer held.
+  //
+  // Only the clear is forced. A marker is restored into an empty slot rather than assigned over
+  // whatever is there, because during a drag the local value is ahead of the one the caller has
+  // echoed back, and assigning would drag the marker backwards under the finger.
+  if (scrubController != null) {
+    LaunchedEffect(initialMarkerX) {
+      if (initialMarkerX != null) {
+        if (markerX == null) markerX = initialMarkerX
+        scrubController.hasActiveMarker = true
+      } else {
+        markerX = null
+        markerSeriesIndex = null
+        lastAcceptedInteraction = null
+        scrubController.hasActiveMarker = false
+      }
+    }
+  }
+
   val measuringContext =
     rememberCartesianMeasuringContext(
       extraStore = extraStore,
@@ -585,6 +614,7 @@ private fun ScrollAwareRangeEffect(
   chart: CartesianChart,
   model: CartesianChartModel,
   flingBehavior: FlingBehavior? = null,
+  initialMarkerX: Double? = null,
   onAnimatedRange: (minY: Double, maxY: Double) -> Unit,
   onTargetRange: (minY: Double, maxY: Double) -> Unit = { _, _ -> },
 ) {
