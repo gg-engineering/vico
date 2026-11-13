@@ -136,7 +136,9 @@ internal fun Modifier.pointerInput(
       }
     }
     .then(
-      if (onInteraction != null) {
+      // The scrub state machine raises its own Tap and LongPress, so adding these on top of it
+      // delivered every tap twice — and a second tap on a marked point clears it.
+      if (onInteraction != null && scrubController == null) {
         Modifier.pointerInput(onInteraction, longPressEnabled) {
           detectTapGestures(
             onTap = { onInteraction(Interaction.Tap(it.toPoint())) },
