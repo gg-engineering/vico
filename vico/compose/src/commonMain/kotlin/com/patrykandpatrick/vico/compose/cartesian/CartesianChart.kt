@@ -525,6 +525,23 @@ internal constructor(
     }
   }
 
+  private var cachedMarkerTargetXValues: Pair<Map<Double, *>, List<Double>>? = null
+
+  /**
+   * Every x a marker could be placed at, for a consumer that chooses its own.
+   *
+   * Cached against the target map itself. Keying on its size instead looked equivalent and was not:
+   * targets are rebuilt from the visible points every frame, so a scroll replaces the whole set
+   * while the count stays the same, and the stale list was then served for most of a scroll.
+   */
+  internal val allMarkerTargetXValues: List<Double>
+    get() {
+      cachedMarkerTargetXValues?.let { (map, values) -> if (map === _markerTargets) return values }
+      val values = _markerTargets.keys.sorted()
+      cachedMarkerTargetXValues = _markerTargets to values
+      return values
+    }
+
   private fun synthesizeInterpolatedTargets(
     context: CartesianDrawingContext,
     x: Double,

@@ -445,7 +445,21 @@ internal fun CartesianChartHostImpl(
           if (chart.markerController.shouldAcceptInteraction(interaction, narrowedTargets)) {
             val shouldShow = chart.markerController.shouldShowMarker(interaction, narrowedTargets)
             lastAcceptedInteraction = interaction
-            if (shouldShow && narrowedTargets.isNotEmpty()) {
+            // A scrub controller's consumer picks the point. It is handed every x a marker could
+            // sit at, not just the ones nearest the finger — so it can snap to a label even where
+            // the window holds no reading at all, which the nearest-target rule cannot do.
+            val scrubCallback = scrubController?.onMarkerIndexChanged
+            if (scrubCallback != null) {
+              if (shouldShow) {
+                val chosen = scrubCallback(x, chart.allMarkerTargetXValues, interaction)
+                markerX = chosen
+                markerSeriesIndex = if (chosen != null) seriesIndex else null
+              } else {
+                scrubCallback(null, emptyList(), interaction)
+                markerX = null
+                markerSeriesIndex = null
+              }
+            } else if (shouldShow && narrowedTargets.isNotEmpty()) {
               markerX = narrowedTargets.first().x
               markerSeriesIndex = seriesIndex
             } else {
