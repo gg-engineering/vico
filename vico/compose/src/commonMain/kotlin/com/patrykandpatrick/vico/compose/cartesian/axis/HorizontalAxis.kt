@@ -192,11 +192,8 @@ protected constructor(
       val lineLeft = getLineLeft(context, maxLabelWidth, axisDimensions)
       val lineRight = getLineRight(context, maxLabelWidth, axisDimensions)
 
-      // Labels are held to the same horizontal bounds as their guidelines, so one at the edge is
-      // cut where the plot is cut rather than spilling past it. drawGuidelines clips strictly to
-      // layerBounds, so without this a boundary at the edge drew a readable label with no line
-      // beneath it — and a label sliding in under a scroll appeared whole once its centre crossed
-      // over, rather than being revealed progressively.
+      // Held to the same bounds as the guidelines, which clip strictly to the plot — otherwise a
+      // boundary at the edge drew a readable label with no line beneath it.
       clipPath.rewind()
       clipPath.addRect(
         Rect(
@@ -531,10 +528,8 @@ protected constructor(
   }
 
   /**
-   * Period boundaries. Unclipped, so the edge test does the work a clip would — which is why the
-   * trailing edge is exclusive, as it is for labels and guidelines: a separator marking the start
-   * of the next period does not belong to this one. A hairline of tolerance keeps a boundary that
-   * rounds fractionally inside from drawing half its stroke past the plot.
+   * Period boundaries, unclipped, so the edge test does a clip's work. The trailing edge is
+   * exclusive — a separator opening the next period is not this one's — with a hairline tolerance.
    */
   private fun drawSeparators(context: CartesianDrawingContext, baseCanvasX: Float) {
     val sep = separators ?: return

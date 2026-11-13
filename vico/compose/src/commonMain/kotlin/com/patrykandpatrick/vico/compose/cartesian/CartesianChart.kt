@@ -404,9 +404,7 @@ internal constructor(
   internal fun draw(context: CartesianDrawingContext) {
     with(context) {
       // Nothing is drawn in the space reserved before the first entry, so the chart has a visible
-      // start. The space itself is untouched — the layer keeps its width and the chart is measured
-      // against the same bounds; this governs only what shows there. Scrolled past, the strip is
-      // behind the layer's left edge and none of it applies.
+      // start. The space itself is untouched; this governs only what shows there.
       val contentStart = layerBounds.left + layerDimensions.startPadding - scroll
       val hidesStrip =
         layerDimensions.unscalableStartPadding > 0f && contentStart > layerBounds.left
@@ -425,9 +423,10 @@ internal constructor(
       if (fadingEdges != null) canvas.saveLayer(Rect(Offset.Zero, canvasSize), EmptyPaint)
       decorations.forEach { it.drawUnderLayers(context) }
       clippedToChart { axisManager.drawUnderLayers(context) }
-      // The start axis's line marks where the chart begins, so it belongs in the strip the rest is
-      // kept out of.
+      // The start axis's line marks where the chart begins, so it belongs in the strip.
       if (hidesStrip) axisManager.drawStartAxisLine(context)
+      // Data on top of the furniture describing it: otherwise an axis line drew over its points.
+      clippedToChart { axisManager.drawOverLayers(context) }
       val (layerBitmap, layerCanvas) = getBitmap(cacheKeyNamespace)
       withCanvas(layerCanvas) {
         model.forEachWithLayer(drawingConsumer.apply { this.context = context })
@@ -438,9 +437,8 @@ internal constructor(
       forEachPersistentMarker { marker, targets -> marker.drawUnderLayers(context, targets) }
       val markerTargets =
         getMarkerTargets(markerX, markerSeriesIndex).ifEmpty {
-          // A marker between two readings still marks something: the line drawn across the gap
-          // joins two real points, so a value read off it is an estimate rather than an
-          // invention. Without this the marker simply vanishes between points.
+          // Between readings the line joins two real points, so a value read off it is an estimate
+          // rather than an invention — without this the marker vanishes between points.
           markerX?.let { synthesizeInterpolatedTargets(context, it) } ?: emptyList()
         }
       val drawMarker = markerTargets.isNotEmpty()
@@ -450,13 +448,12 @@ internal constructor(
         draw(context)
         canvas.restore()
       }
-      clippedToChart { axisManager.drawOverLayers(context) }
+      // Past the fade restore: a pill parked below the plot was sliced by that layer's bounds.
       decorations.forEach { it.drawOverLayers(context) }
       forEachPersistentMarker { marker, targets -> marker.drawOverLayers(context, targets) }
       if (drawMarker) marker?.drawOverLayers(context, markerTargets)
       legend?.draw(context)
-      // The label line carries one or the other: the marker's own label while a point is marked,
-      // its resting text the rest of the time.
+      // One or the other: the marker's label while a point is marked, its resting text otherwise.
       if (drawMarker) marker?.drawLabels(context, markerTargets) else marker?.drawResting(context)
     }
   }
@@ -557,8 +554,7 @@ internal constructor(
             ((x - ranges.minX) / ranges.xStep).toFloat()
       if (canvasX < layerBounds.left - 1 || canvasX > layerBounds.right + 1) return emptyList()
 
-      // One target per layer that can be marked, matching the real-data path where each layer adds
-      // its own. A layer with markerTargetsEnabled off — a percentile band — contributes none.
+      // One target per markable layer, as the real-data path does; a band contributes none.
       val result = mutableListOf<CartesianMarker.Target>()
       model.models.forEachIndexed { layerIndex, layerModel ->
         if (layerModel !is LineCartesianLayerModel) return@forEachIndexed

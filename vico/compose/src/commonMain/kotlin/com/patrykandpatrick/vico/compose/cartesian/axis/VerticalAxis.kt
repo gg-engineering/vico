@@ -207,8 +207,7 @@ protected constructor(
       val labelValues = itemPlacer.getLabelValues(this, bounds.height, maxLabelHeight, position)
       val tickLeftX = getTickLeftX()
       val tickRightX = tickLeftX + lineThickness + this.tickLength
-      // Centred in the gutter the axis reserves, rather than hung off the tick: the gutter is a
-      // fixed width here, so anchoring to the tick left the numbers off-centre within it.
+      // Centred in the reserved gutter: anchoring to the tick left the numbers off-centre in it.
       val labelX = bounds.center.x
       val yRange = ranges.getYRange(position)
       // A range of zero length divides to NaN, and a NaN y silently drops the whole label pass.

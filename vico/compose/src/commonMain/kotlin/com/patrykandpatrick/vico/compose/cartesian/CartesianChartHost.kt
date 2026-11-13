@@ -114,26 +114,16 @@ public fun CartesianChartHost(
   // The producer's ranges are deliberately discarded — see below.
   val (model, previousModel, _, extraStore) = modelWrapper
 
-  // Ranges are a function of two things — the model, and the chart's range providers — but the
-  // producer only ever computes them when a model is pushed. A window that arrives after that
-  // push (the common case when it is derived from the data that triggered the push) would then
-  // never reach the chart: it would keep serving the domain captured at push time, drawing its
-  // data far off-canvas, until some unrelated push happened to recompute them.
-  //
-  // Recomputing here makes the chart follow its providers. `chart` is the key because a provider
-  // change arrives as a new chart instance, and `copy` keeps the id, so nothing else notices.
+  // The producer computes ranges only on a push, so a window arriving after one would never reach
+  // the chart. Keyed on `chart` because a provider change arrives as a new instance.
   val hostRanges = remember { MutableCartesianChartRanges() }
   val initialRanges =
     remember(chart, model) {
       if (model == null) {
         CartesianChartRanges.Empty
       } else {
-        // The opening range is derived here, before the first frame, because this is where the
-        // ranges that frame draws with are decided. Deriving it a frame later left updateRanges
-        // below with no opinion to ask for, so the chart opened on the whole dataset's extent and
-        // then replaced it.
-        // Paired by position: indexOf matched on equals, so two layers configured alike both
-        // resolved to models[0] and the second drew against the first one's range.
+        // Seeded before updateRanges, or the chart opens on the whole dataset and re-letters a
+        // frame later. Paired by position: indexOf matched on equals, so alike layers collided.
         chart.layers.forEachIndexed { index, layer ->
           val provider =
             (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
@@ -141,17 +131,13 @@ public fun CartesianChartHost(
           val series =
             (model.models.getOrNull(index) as? LineCartesianLayerModel)?.series
               ?: return@forEachIndexed
-          // Once per model, not once per chart identity: rebuilding the cache resets the ticks,
-          // and re-seeding would discard a range the user had scrolled to. Asked separately
-          // because a model copied for new extras keeps its series instance.
+          // Per model, not per chart: rebuilding resets the ticks and discards a scrolled-to range.
           if (provider.cachedSeries !== series) {
             provider.cachedSeries = series
             provider.buildCache(series)
           }
-          // Seeded when the window moved, or when there is no settled axis to keep — never merely
-          // because the series changed. The seed describes the window the chart OPENS on, so
-          // re-seeding on any push dragged the axis back there from wherever the user had
-          // scrolled.
+          // Only when the window moved: the seed is the opening window, so re-seeding on any push
+          // dragged the axis back from wherever the user had scrolled.
           val window = provider.openingWindow(model.extraStore)
           if (provider.cachedWindow != window || provider.currentTicks.isEmpty()) {
             provider.cachedWindow = window
@@ -341,14 +327,8 @@ internal fun CartesianChartHostImpl(
 
   val scrubController = chart.markerController as? ScrubMarkerController
 
-  // The caller owns whether there is a marker at all. Keyed on initialMarkerX, not Unit: running
-  // once per host meant a caller that cleared its marker — because the marked entry was deleted,
-  // or fell outside the window — never reached the chart, which went on drawing the dot and its
-  // guideline at an x the caller no longer held.
-  //
-  // Only the clear is forced. A marker is restored into an empty slot rather than assigned over
-  // whatever is there, because during a drag the local value is ahead of the one the caller has
-  // echoed back, and assigning would drag the marker backwards under the finger.
+  // Keyed on the value, not Unit, so a caller clearing its marker reaches the chart. Only the
+  // clear is forced: during a drag the local value leads the echoed one.
   if (scrubController != null) {
     LaunchedEffect(initialMarkerX) {
       if (initialMarkerX != null) {
@@ -385,17 +365,13 @@ internal fun CartesianChartHostImpl(
         (layer as? LineCartesianLayer)?.internalRangeProvider as? ScrollAwareRangeProvider
       }
     }
-  // Every window the draw pass sees, for the marker's resting content. Kept apart from the range
-  // providers' feed below, which exists only when a layer has such a provider — a resting label is
-  // drawn whatever the layers happen to be.
+  // Kept apart from the providers' feed: a resting label is drawn whatever the layers are.
   val visibleXRanges = remember {
     MutableSharedFlow<ClosedFloatingPointRange<Double>>(replay = 1, extraBufferCapacity = 8)
   }
 
-  // Keyed on the model too, not the scroll alone. The resting text is formatted from the window and
-  // from the caller's own state, and new data can change the second without touching the first — a
-  // card naming the week its entries fall in would go on naming the old one. Restarting replays the
-  // last window, so it re-formats.
+  // Keyed on the model too: the text is formatted from the window and the caller's state, and new
+  // data can change the second alone.
   LaunchedEffect(chart.marker, visibleXRanges, model) {
     val marker = chart.marker ?: return@LaunchedEffect
     // The first window as soon as there is one, so the resting text is on the opening frame rather
@@ -445,9 +421,8 @@ internal fun CartesianChartHostImpl(
           if (chart.markerController.shouldAcceptInteraction(interaction, narrowedTargets)) {
             val shouldShow = chart.markerController.shouldShowMarker(interaction, narrowedTargets)
             lastAcceptedInteraction = interaction
-            // A scrub controller's consumer picks the point. It is handed every x a marker could
-            // sit at, not just the ones nearest the finger — so it can snap to a label even where
-            // the window holds no reading at all, which the nearest-target rule cannot do.
+            // Handed every markable x, not just the nearest, so it can snap to a label in a window
+            // holding no reading.
             val scrubCallback = scrubController?.onMarkerIndexChanged
             if (scrubCallback != null) {
               if (shouldShow) {

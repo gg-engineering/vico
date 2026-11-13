@@ -597,9 +597,8 @@ protected constructor(
 
       model.series.forEachIndexed { seriesIndex, series ->
         val seriesKey = model.seriesKeys[seriesIndex]
-        // The cached positions are baked against the range at model-build time, so a layer whose
-        // range moves without a push must compute from the live one. Only the positions are
-        // skipped — the sweep fraction and the opacity above still come from the drawing model.
+        // Cached positions are baked against the push-time range. Only they are skipped; the sweep
+        // fraction and opacity still come from the drawing model.
         val pointInfoMap =
           if (rangeProvider is ScrollAwareRangeProvider || alwaysUseLiveRange) {
             null
