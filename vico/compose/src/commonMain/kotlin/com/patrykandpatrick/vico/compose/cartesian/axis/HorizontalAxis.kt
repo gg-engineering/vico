@@ -750,6 +750,7 @@ protected constructor(
             .coerceIn(size.min.pixels, size.max.pixels)
         }
         is Size.Fixed -> size.value.pixels
+        is Size.Scroll -> size.value.pixels
         is Size.Fraction -> canvasSize.height * size.fraction
         is Size.Text ->
           label

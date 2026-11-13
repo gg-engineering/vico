@@ -558,6 +558,7 @@ protected constructor(
           )
         }
         is Size.Fixed -> size.value.pixels
+        is Size.Scroll -> size.value.pixels
         is Size.Fraction -> canvasWidth * size.fraction
         is Size.Text ->
           label

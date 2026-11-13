@@ -45,13 +45,12 @@ import kotlin.math.min
  */
 internal object MonotoneInterpolator : LineCartesianLayer.Interpolator {
   /**
-   * Fritsch-Carlson reads one neighbour either side: the tangent at the first drawn point needs
-   * the point before it, and the tangent at the last needs the one after. At 0 the two edge
-   * segments fall back to one-sided tangents, which changes the curve as the chart scrolls and
-   * nothing static would catch.
+   * Fritsch-Carlson reads one neighbour either side: the tangent at the first drawn point needs the
+   * point before it, and the tangent at the last needs the one after. At 0 the two edge segments
+   * fall back to one-sided tangents, which changes the curve as the chart scrolls and nothing
+   * static would catch.
    */
   override val visiblePadding: Int = 1
-
 
   override fun interpolate(
     context: CartesianDrawingContext,

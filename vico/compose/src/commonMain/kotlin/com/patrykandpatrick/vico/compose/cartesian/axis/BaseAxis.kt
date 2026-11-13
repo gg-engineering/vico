@@ -196,6 +196,19 @@ public abstract class BaseAxis<P : Axis.Position>(
     }
 
     /**
+     * A fixed size that holds while the chart scrolls, so the gutter does not resize as labels of
+     * different widths come into view.
+     *
+     * @property value the size.
+     */
+    public class Scroll(public val value: Dp) : Size() {
+      override fun equals(other: Any?): Boolean =
+        this === other || other is Scroll && value == other.value
+
+      override fun hashCode(): Int = value.hashCode()
+    }
+
+    /**
      * The axis will use a fraction of the available space.
      *
      * @property fraction the fraction of the available space that the axis should use.
