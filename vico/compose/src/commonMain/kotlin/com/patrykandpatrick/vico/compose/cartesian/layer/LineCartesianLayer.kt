@@ -706,13 +706,19 @@ protected constructor(
     drawingStart: Float,
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
   ) {
+    // forEachPointInBounds always runs one point past the edge, so the line can carry on to the
+    // boundary instead of stopping at the last point inside. The line needs that; the dot on top
+    // of it does not, and unclipped it sat beyond the plot with nothing under it.
+    canvas.save()
+    canvas.clipRect(layerBounds)
     forEachPointInBounds(
       series = series,
       drawingStart = drawingStart,
       pointInfoMap = pointInfoMap,
     ) { chartEntry, x, y, previousX, nextX ->
       val point = line.pointProvider?.getPointOrThrow(chartEntry, model.extraStore)
-      point?.draw(this, x, y)
+      // Skipped rather than clipped: half a dot reads as a rendering fault, not as one sliding in.
+      if (x >= layerBounds.left && x <= layerBounds.right) point?.draw(this, x, y)
 
       line.dataLabel
         .takeIf {
@@ -756,6 +762,7 @@ protected constructor(
           )
         }
     }
+    canvas.restore()
   }
 
   protected fun CartesianDrawingContext.getMaxDataLabelWidth(
