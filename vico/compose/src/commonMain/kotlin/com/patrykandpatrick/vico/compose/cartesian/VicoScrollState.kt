@@ -36,7 +36,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Rect
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
+import com.patrykandpatrick.vico.compose.cartesian.layer.MonotoneInterpolator
 import com.patrykandpatrick.vico.compose.common.rangeWith
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -241,6 +243,54 @@ public class VicoScrollState {
     val first = ceil((range.start - ctx.ranges.minX) / xStep).toLong()
     val last = floor((range.endInclusive - ctx.ranges.minX) / xStep).toLong()
     return (first..last).map { ctx.ranges.minX + it * xStep }
+  }
+
+  public fun getInterpolatedYValues(
+    xValues: List<Double>,
+    interpolationType: InterpolationType = InterpolationType.MONOTONE,
+  ): List<List<Double?>> {
+    val ctx = context ?: return emptyList()
+    val model = ctx.model
+    val results = mutableListOf<List<Double?>>()
+    for (layerModel in model.models) {
+      if (layerModel is LineCartesianLayerModel) {
+        for (series in layerModel.series) {
+          val yValues =
+            when (interpolationType) {
+              InterpolationType.MONOTONE ->
+                xValues.map { x ->
+                  MonotoneInterpolator.getYAtXFromEntries(x, series)
+                }
+              InterpolationType.LINEAR ->
+                xValues.map { x ->
+                  linearInterpolateFromEntries(x, series)
+                }
+            }
+          results.add(yValues)
+        }
+      }
+    }
+    return results
+  }
+
+  private fun linearInterpolateFromEntries(
+    x: Double,
+    entries: List<LineCartesianLayerModel.Entry>,
+  ): Double? {
+    if (entries.size < 2) return entries.firstOrNull()?.y
+    if (x < entries.first().x) return null
+    if (x > entries.last().x) return null
+    for (i in 0 until entries.lastIndex) {
+      val x0 = entries[i].x
+      val y0 = entries[i].y
+      val x1 = entries[i + 1].x
+      val y1 = entries[i + 1].y
+      if (x in x0..x1) {
+        val t = (x - x0) / (x1 - x0)
+        return y0 + t * (y1 - y0)
+      }
+    }
+    return null
   }
 
   private inline fun withUpdated(

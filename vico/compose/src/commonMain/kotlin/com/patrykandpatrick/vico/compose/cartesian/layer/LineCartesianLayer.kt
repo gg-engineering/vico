@@ -380,6 +380,12 @@ protected constructor(
 
     /** Houses [Interpolator] singletons and factory functions. */
     public companion object {
+      /**
+       * Monotone cubic interpolation. Unlike a Catmull-Rom spline this never overshoots, so a
+       * curve through health readings stays inside the values it was drawn from.
+       */
+      public fun monotone(): Interpolator = MonotoneInterpolator
+
       /** Uses line segments. */
       public val Sharp: Interpolator =
         object : Interpolator {
