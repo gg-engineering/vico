@@ -24,18 +24,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChart.PersistentMarkerScope
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.AxisManager
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import com.patrykandpatrick.vico.compose.cartesian.layer.*
+import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.MonotoneInterpolator
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerVisibilityListener
+import com.patrykandpatrick.vico.compose.cartesian.marker.LineCartesianLayerMarkerTarget
+import com.patrykandpatrick.vico.compose.cartesian.marker.MutableLineCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.common.*
 import com.patrykandpatrick.vico.compose.common.data.CacheStore
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
@@ -430,7 +436,13 @@ internal constructor(
       _markerTargets.clear()
       _markerTargets.putAll(sortedMarkerTargetPairs)
       forEachPersistentMarker { marker, targets -> marker.drawUnderLayers(context, targets) }
-      val markerTargets = getMarkerTargets(markerX, markerSeriesIndex)
+      val markerTargets =
+        getMarkerTargets(markerX, markerSeriesIndex).ifEmpty {
+          // A marker between two readings still marks something: the line drawn across the gap
+          // joins two real points, so a value read off it is an estimate rather than an
+          // invention. Without this the marker simply vanishes between points.
+          markerX?.let { synthesizeInterpolatedTargets(context, it) } ?: emptyList()
+        }
       val drawMarker = markerTargets.isNotEmpty()
       if (drawMarker) marker?.drawUnderLayers(context, markerTargets)
       canvas.drawImage(layerBitmap, Offset.Zero, EmptyPaint)
@@ -512,6 +524,47 @@ internal constructor(
       }
     }
   }
+
+  private fun synthesizeInterpolatedTargets(
+    context: CartesianDrawingContext,
+    x: Double,
+  ): List<CartesianMarker.Target> =
+    with(context) {
+      val drawingStart =
+        layerBounds.getStart(isLtr) + layoutDirectionMultiplier * layerDimensions.startPadding -
+          scroll
+      val canvasX =
+        drawingStart +
+          layoutDirectionMultiplier *
+            layerDimensions.xSpacing *
+            ((x - ranges.minX) / ranges.xStep).toFloat()
+      if (canvasX < layerBounds.left - 1 || canvasX > layerBounds.right + 1) return emptyList()
+
+      // One target per layer that can be marked, matching the real-data path where each layer adds
+      // its own. A layer with markerTargetsEnabled off — a percentile band — contributes none.
+      val result = mutableListOf<CartesianMarker.Target>()
+      model.models.forEachIndexed { layerIndex, layerModel ->
+        if (layerModel !is LineCartesianLayerModel) return@forEachIndexed
+        val layer = layers.getOrNull(layerIndex) as? LineCartesianLayer ?: return@forEachIndexed
+        if (!layer.markerTargetsEnabled) return@forEachIndexed
+        val yRange = ranges.getYRange(layer.internalVerticalAxisPosition)
+        val target = MutableLineCartesianLayerMarkerTarget(x, canvasX)
+        layerModel.series.forEach { series ->
+          val y = MonotoneInterpolator.getYAtXFromEntries(x, series) ?: return@forEach
+          val canvasY =
+            layerBounds.bottom - ((y - yRange.minY) / yRange.length).toFloat() * layerBounds.height
+          target.points +=
+            LineCartesianLayerMarkerTarget.Point(
+              entry = LineCartesianLayerModel.Entry(x, y),
+              canvasY = canvasY.coerceIn(layerBounds.top, layerBounds.bottom),
+              color = Color.Transparent,
+              isInterpolated = true,
+            )
+        }
+        if (target.points.isNotEmpty()) result += target
+      }
+      result
+    }
 
   private inline fun forEachPersistentMarker(
     block: (CartesianMarker, List<CartesianMarker.Target>) -> Unit

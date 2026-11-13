@@ -192,12 +192,17 @@ protected constructor(
       val lineLeft = getLineLeft(context, maxLabelWidth, axisDimensions)
       val lineRight = getLineRight(context, maxLabelWidth, axisDimensions)
 
+      // Labels are held to the same horizontal bounds as their guidelines, so one at the edge is
+      // cut where the plot is cut rather than spilling past it. drawGuidelines clips strictly to
+      // layerBounds, so without this a boundary at the edge drew a readable label with no line
+      // beneath it — and a label sliding in under a scroll appeared whole once its centre crossed
+      // over, rather than being revealed progressively.
       clipPath.rewind()
       clipPath.addRect(
         Rect(
-          lineLeft,
+          maxOf(lineLeft, layerBounds.left),
           min(bounds.top, layerBounds.top),
-          lineRight,
+          minOf(lineRight, layerBounds.right),
           max(bounds.bottom, layerBounds.bottom),
         ),
         Path.Direction.Clockwise,
@@ -732,7 +737,10 @@ protected constructor(
       when (size) {
         is Size.Auto -> {
           val labelHeight = getMaxLabelHeight(layerDimensions, fullXRange, maxLabelWidth)
-          val baseHeight = labelHeight + lineThickness + outwardTickLength
+          val baseHeight =
+            labelHeight +
+              (if (position == Axis.Position.Horizontal.Bottom) lineThickness else 0f) +
+              outwardTickLength
           val titleText = title(model.extraStore)
           when (titlePosition) {
               // The `Side` title is drawn at the plot width, so it’s measured at the same width.
