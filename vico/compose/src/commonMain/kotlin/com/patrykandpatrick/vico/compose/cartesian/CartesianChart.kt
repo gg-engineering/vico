@@ -397,9 +397,31 @@ internal constructor(
 
   internal fun draw(context: CartesianDrawingContext) {
     with(context) {
+      // Nothing is drawn in the space reserved before the first entry, so the chart has a visible
+      // start. The space itself is untouched — the layer keeps its width and the chart is measured
+      // against the same bounds; this governs only what shows there. Scrolled past, the strip is
+      // behind the layer's left edge and none of it applies.
+      val contentStart = layerBounds.left + layerDimensions.startPadding - scroll
+      val hidesStrip =
+        layerDimensions.unscalableStartPadding > 0f && contentStart > layerBounds.left
+
+      fun clippedToChart(block: () -> Unit) {
+        if (!hidesStrip) {
+          block()
+          return
+        }
+        canvas.save()
+        canvas.clipRect(contentStart, 0f, canvasSize.width, canvasSize.height)
+        block()
+        canvas.restore()
+      }
+
       if (fadingEdges != null) canvas.saveLayer(Rect(Offset.Zero, canvasSize), EmptyPaint)
       decorations.forEach { it.drawUnderLayers(context) }
-      axisManager.drawUnderLayers(context)
+      clippedToChart { axisManager.drawUnderLayers(context) }
+      // The start axis's line marks where the chart begins, so it belongs in the strip the rest is
+      // kept out of.
+      if (hidesStrip) axisManager.drawStartAxisLine(context)
       val (layerBitmap, layerCanvas) = getBitmap(cacheKeyNamespace)
       withCanvas(layerCanvas) {
         model.forEachWithLayer(drawingConsumer.apply { this.context = context })
@@ -416,7 +438,7 @@ internal constructor(
         draw(context)
         canvas.restore()
       }
-      axisManager.drawOverLayers(context)
+      clippedToChart { axisManager.drawOverLayers(context) }
       decorations.forEach { it.drawOverLayers(context) }
       forEachPersistentMarker { marker, targets -> marker.drawOverLayers(context, targets) }
       if (drawMarker) marker?.drawOverLayers(context, markerTargets)

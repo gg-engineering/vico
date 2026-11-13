@@ -130,6 +130,11 @@ internal class AxisManager {
     axisCache.forEach { axis -> axis.drawUnderLayers(context, axisDimensions) }
   }
 
+  /** Only the start axis's line, which marks where the chart begins. */
+  fun drawStartAxisLine(context: CartesianDrawingContext) {
+    (startAxis as? VerticalAxis<*>)?.drawLineOnly(context)
+  }
+
   fun drawOverLayers(context: CartesianDrawingContext) {
     axisCache.forEach { axis -> axis.drawOverLayers(context, axisDimensions) }
   }

@@ -350,13 +350,37 @@ protected constructor(
       max(lineThickness, tickThickness),
     )
 
+  /**
+   * Where the chart itself begins or ends, rather than where the gutter is.
+   *
+   * Pinned to the axis bounds, a chart scrolled away from its start still showed a line against the
+   * canvas edge — marking a beginning that was off-screen. The chart's start is its first entry:
+   * the layer's left edge plus the padding reserved before it, moving with the scroll.
+   */
+  private fun CartesianDrawingContext.chartEdgeX(): Float {
+    val firstEntryX = layerBounds.left + layerDimensions.startPadding - scroll
+    return if (position.isLeft(this)) {
+      firstEntryX
+    } else {
+      // Symmetric with the start: the last entry's position plus whatever is reserved after it.
+      val contentWidth =
+        ((ranges.maxX - ranges.minX) / ranges.xStep).toFloat() * layerDimensions.xSpacing
+      firstEntryX + contentWidth + layerDimensions.endPadding
+    }
+  }
+
+  /** Just the line, for the chart to draw inside the strip the rest of the axis is kept out of. */
+  internal fun drawLineOnly(context: CartesianDrawingContext) {
+    with(context) { line?.drawVertical(context, chartEdgeX(), layerBounds.top, layerBounds.bottom) }
+  }
+
   private fun drawLineAndTicks(context: CartesianDrawingContext) {
     with(context) {
       val topExtension = if (itemPlacer.getShiftTopLines(this)) tickThickness else 0f
       val bottomExtension = tickThickness
       line?.drawVertical(
         context = context,
-        x = getAxisLineCenterX(),
+        x = chartEdgeX(),
         top = bounds.top - topExtension,
         bottom = bounds.bottom + bottomExtension,
       )

@@ -42,6 +42,7 @@ import com.patrykandpatrick.vico.compose.common.doubled
 import com.patrykandpatrick.vico.compose.common.half
 import com.patrykandpatrick.vico.compose.common.isBoundOf
 import com.patrykandpatrick.vico.compose.common.orZero
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -78,8 +79,11 @@ protected constructor(
   public val separators: Separators? = null,
   /** Where the label sits relative to the tick it belongs to. */
   public val labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
-  /** How a label is aligned about its own _x_ value. */
-  public val labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
+  /**
+   * Anchors every label the same way about its own _x_ value. Null leaves the extremes shifted
+   * inward and the rest centred, which is the default behaviour.
+   */
+  public val labelHorizontalPosition: Position.Horizontal? = null,
 ) :
   BaseAxis<P>(
     line,
@@ -217,11 +221,12 @@ protected constructor(
         val previousX = labelValues.getOrNull(index - 1) ?: (fullXRange.start.doubled - x)
         val nextX = labelValues.getOrNull(index + 1) ?: (fullXRange.endInclusive.doubled - x)
         val horizontalPosition =
-          when {
-            shiftExtremeLabels && index == 0 -> Position.Horizontal.End
-            shiftExtremeLabels && index == labelValues.lastIndex -> Position.Horizontal.Start
-            else -> Position.Horizontal.Center
-          }
+          labelHorizontalPosition
+            ?: when {
+              shiftExtremeLabels && index == 0 -> Position.Horizontal.End
+              shiftExtremeLabels && index == labelValues.lastIndex -> Position.Horizontal.Start
+              else -> Position.Horizontal.Center
+            }
         val maxWidth =
           when (horizontalPosition) {
             Position.Horizontal.End ->
@@ -546,6 +551,18 @@ protected constructor(
     }
   }
 
+  /**
+   * Whether [x] is the chart's own first or last entry, where the axis line already marks the edge
+   * and a guideline on top of it reads as a double rule.
+   *
+   * Compared with a tolerance rather than exactly: a label value is rebuilt by rounding to the
+   * nearest step, so it lands near ranges.minX and an exact test passes straight over it.
+   */
+  private fun CartesianDrawingContext.isChartEdge(x: Double): Boolean {
+    val tolerance = ranges.xStep / 1000
+    return abs(x - ranges.minX) < tolerance || abs(x - ranges.maxX) < tolerance
+  }
+
   protected open fun drawGuidelines(
     context: CartesianDrawingContext,
     baseCanvasX: Float,
@@ -567,7 +584,7 @@ protected constructor(
                 layoutDirectionMultiplier
 
           guideline
-            .takeUnless { x.isBoundOf(fullXRange) }
+            .takeUnless { x.isBoundOf(fullXRange) || isChartEdge(x) }
             ?.drawVertical(this, canvasX, layerBounds.top, layerBounds.bottom)
         }
       } else {
@@ -580,7 +597,7 @@ protected constructor(
               getLinesCorrectionX(x, fullXRange)
 
           guideline
-            .takeUnless { x.isBoundOf(fullXRange) }
+            .takeUnless { x.isBoundOf(fullXRange) || isChartEdge(x) }
             ?.drawVertical(this, canvasX, layerBounds.top, layerBounds.bottom)
         }
       }
@@ -1034,7 +1051,7 @@ protected constructor(
       titlePosition: TitlePosition = TitlePosition.Side,
       separators: Separators? = null,
       labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
-      labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
+      labelHorizontalPosition: Position.Horizontal? = null,
     ): HorizontalAxis<Axis.Position.Horizontal.Top> =
       remember(
         line,
@@ -1096,7 +1113,7 @@ protected constructor(
       titlePosition: TitlePosition = TitlePosition.Side,
       separators: Separators? = null,
       labelVerticalMode: LabelVerticalMode = LabelVerticalMode.Center,
-      labelHorizontalPosition: Position.Horizontal = Position.Horizontal.Center,
+      labelHorizontalPosition: Position.Horizontal? = null,
     ): HorizontalAxis<Axis.Position.Horizontal.Bottom> =
       remember(
         line,
