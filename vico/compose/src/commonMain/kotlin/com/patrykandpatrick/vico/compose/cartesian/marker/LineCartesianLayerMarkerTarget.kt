@@ -36,6 +36,8 @@ public interface LineCartesianLayerMarkerTarget : CartesianMarker.Target {
     val entry: LineCartesianLayerModel.Entry,
     val canvasY: Float,
     val color: Color,
+    /** True when this point is interpolated (no real data point). Indicator dot is not drawn. */
+    val isInterpolated: Boolean = false,
   )
 }
 

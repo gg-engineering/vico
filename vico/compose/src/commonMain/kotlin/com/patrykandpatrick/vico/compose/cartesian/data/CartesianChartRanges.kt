@@ -37,6 +37,13 @@ public interface CartesianChartRanges {
    */
   public fun getYRange(axisPosition: Axis.Position.Vertical?): YRange
 
+  /**
+   * Returns the animation target [YRange]. During animation, this is the final destination; when
+   * not animating, same as [getYRange]. Used by yTransform layers to cache correctly.
+   */
+  public fun getTargetYRange(axisPosition: Axis.Position.Vertical?): YRange =
+    getYRange(axisPosition)
+
   /** The difference between [maxX] and [minX]. */
   public val xLength: Double
     get() = maxX - minX

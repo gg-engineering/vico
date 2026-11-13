@@ -21,6 +21,9 @@ import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -33,9 +36,23 @@ public class CartesianChartModelProducer {
   private val mutex = Mutex()
   private val updateReceivers = mutableMapOf<Any, UpdateReceiver>()
 
+  private val _isReady = MutableStateFlow(false)
+
+  /**
+   * True once the first successful [runTransaction] has produced a non-null model, and true from
+   * then on.
+   *
+   * A latch, not a current state: it never returns to false, so a later transaction that is still
+   * in flight does not report the chart as unready. Consumers use it to dismiss a first-paint
+   * skeleton, which is a thing that happens once. Reading it as "a model is ready right now" and
+   * bringing a skeleton back on every reload is what it will not support.
+   */
+  public val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
+
   private suspend fun update(
     partials: List<CartesianLayerModel.Partial>,
     transactionExtraStore: MutableExtraStore,
+    animate: Boolean = true,
   ) {
     coroutineScope {
       mutex.withLock {
@@ -47,7 +64,9 @@ public class CartesianChartModelProducer {
           return@coroutineScope
         }
         updateReceivers.values
-          .map { launch { it.handleUpdate(immutablePartials, transactionExtraStore) } }
+          .map {
+            launch { it.handleUpdate(immutablePartials, transactionExtraStore, animate = animate) }
+          }
           .joinAll()
         lastPartials = immutablePartials
         lastTransactionExtraStore = transactionExtraStore
@@ -64,6 +83,7 @@ public class CartesianChartModelProducer {
       .also { model ->
         cachedModel = model
         cachedModelPartialHashCode = partials.hashCode()
+        if (model != null && !_isReady.value) _isReady.value = true
       }
 
   private suspend fun transform(
@@ -106,7 +126,12 @@ public class CartesianChartModelProducer {
         )
       mutex.withLock {
         updateReceivers[key] = receiver
-        receiver.handleUpdate(lastPartials, lastTransactionExtraStore, restoredModel)
+        receiver.handleUpdate(
+          lastPartials,
+          lastTransactionExtraStore,
+          restoredModel,
+          animate = false,
+        )
       }
     }
   }
@@ -149,13 +174,16 @@ public class CartesianChartModelProducer {
    * (1) Creates a [Transaction], (2) invokes [block], and (3) runs a data update, returning once
    * the update is complete. Between steps 2 and 3, if there’s already an update in progress, the
    * current coroutine is suspended until the ongoing update’s completion.
+   *
+   * @param animate Whether to animate the difference between old and new data. When `false`, the
+   *   new data is applied instantly without interpolation.
    */
-  public suspend fun runTransaction(block: Transaction.() -> Unit) {
-    withContext(Dispatchers.Default) { Transaction().also(block).commit() }
+  public suspend fun runTransaction(animate: Boolean = true, block: Transaction.() -> Unit) {
+    withContext(getDispatcher()) { Transaction(animate).also(block).commit() }
   }
 
   /** Handles data updates. This is used via [runTransaction]. */
-  public inner class Transaction internal constructor() {
+  public inner class Transaction internal constructor(private val animate: Boolean = true) {
     private val newPartials = mutableListOf<CartesianLayerModel.Partial>()
     private val newExtraStore = MutableExtraStore()
 
@@ -173,7 +201,7 @@ public class CartesianChartModelProducer {
     }
 
     internal suspend fun commit() {
-      update(newPartials, newExtraStore)
+      update(newPartials, newExtraStore, animate)
     }
   }
 
@@ -191,6 +219,7 @@ public class CartesianChartModelProducer {
       partials: List<CartesianLayerModel.Partial>,
       transactionExtraStore: ExtraStore,
       restoredModel: CartesianChartModel? = null,
+      animate: Boolean = true,
     ) {
       cancelAnimation()
       val model =
@@ -201,7 +230,14 @@ public class CartesianChartModelProducer {
         }
       val ranges = updateRanges(model)
       prepareForTransformation(model, hostExtraStore, ranges)
-      startAnimation { key, fraction -> transform(key, fraction, model, ranges) }
+      if (animate) {
+        startAnimation { key, fraction -> transform(key, fraction, model, ranges) }
+      } else {
+        // The animation path's end state, reached without a frame clock: no clock exists in a
+        // preview, and a virtual-time test scheduler cannot drain the real one.
+        transform(hostExtraStore, 1f)
+        onUpdate(model, ranges, hostExtraStore.copy())
+      }
     }
   }
 
@@ -222,8 +258,11 @@ internal object PreviewContext : AbstractCoroutineContextElement(PreviewContextK
 internal object InlineUpdateContextKey : CoroutineContext.Key<InlineUpdateContext>
 
 /**
- * Runs a data update on the caller instead of hopping to a background dispatcher. A test that
- * pushes data and asserts in the same breath needs the commit to have happened by the time
- * [CartesianChartModelProducer.runTransaction] returns.
+ * Runs data updates on the calling coroutine rather than [Dispatchers.Default].
+ *
+ * Previews use it because they have no frame clock to await. Tests use it because a virtual-time
+ * scheduler cannot drain a real dispatcher: without it, a test that advances until idle resumes
+ * while an update is still in flight on the default pool, and whether it observes the result comes
+ * down to how fast the machine is.
  */
 public object InlineUpdateContext : AbstractCoroutineContextElement(InlineUpdateContextKey)
