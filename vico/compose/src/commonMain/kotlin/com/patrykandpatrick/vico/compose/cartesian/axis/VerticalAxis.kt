@@ -171,6 +171,9 @@ protected constructor(
         itemPlacer.getLineValues(this, bounds.height, maxLabelHeight, position)
           ?: itemPlacer.getLabelValues(this, bounds.height, maxLabelHeight, position)
 
+      // A zero-length range divides to NaN, and a NaN y drops the whole guideline pass silently.
+      if (yRange.length == 0.0) return@with
+
       lineValues.forEach { lineValue ->
         centerY =
           bounds.bottom - bounds.height * ((lineValue - yRange.minY) / yRange.length).toFloat() +
@@ -178,12 +181,15 @@ protected constructor(
 
         guideline
           ?.takeIf {
-            isNotInRestrictedBounds(
-              left = layerBounds.left,
-              top = centerY - guidelineThickness.half,
-              right = layerBounds.right,
-              bottom = centerY + guidelineThickness.half,
-            )
+            // A scrolling axis's own bounds move with the scroll, so this test was suppressing
+            // guidelines that sat inside the plot all along.
+            size is Size.Scroll ||
+              isNotInRestrictedBounds(
+                left = layerBounds.left,
+                top = centerY - guidelineThickness.half,
+                right = layerBounds.right,
+                bottom = centerY + guidelineThickness.half,
+              )
           }
           ?.drawHorizontal(
             context = context,
@@ -381,6 +387,18 @@ protected constructor(
     with(context) {
       val topExtension = if (itemPlacer.getShiftTopLines(this)) tickThickness else 0f
       val bottomExtension = tickThickness
+      // A scrolling axis's line rides the chart's edge, which travels well past the plot. Unclipped,
+      // the end line stayed on screen wherever the scroll left it, marking an end that was not there.
+      val clipsToLayer = size is Size.Scroll
+      if (clipsToLayer) {
+        canvas.save()
+        canvas.clipRect(
+          layerBounds.left - lineThickness,
+          bounds.top,
+          layerBounds.right + lineThickness,
+          bounds.bottom,
+        )
+      }
       line?.drawVertical(
         context = context,
         x = chartEdgeX(),
@@ -404,6 +422,7 @@ protected constructor(
           y = tickCenterY,
         )
       }
+      if (clipsToLayer) canvas.restore()
     }
   }
 
