@@ -103,6 +103,7 @@ public fun CartesianChartHost(
   initialAnimationSpec: AnimationSpec<Float>? = animationSpec,
   chartAreaHeight: Dp = Defaults.CARTESIAN_CHART_AREA_HEIGHT.dp,
   placeholder: @Composable BoxScope.() -> Unit = {},
+  flingBehavior: FlingBehavior? = null,
 ) {
   val mutableRanges = remember { MutableCartesianChartRanges() }
   val modelWrapper by
@@ -224,6 +225,7 @@ public fun CartesianChartHost(
       chartAreaHeight,
       previousModel,
       extraStore,
+      flingBehavior,
     )
   } else {
     ChartHostBox(modifier, chartAreaHeight, measureExtras = null) { placeholder() }
@@ -325,6 +327,7 @@ internal fun CartesianChartHostImpl(
   chartAreaHeight: Dp,
   previousModel: CartesianChartModel? = null,
   extraStore: ExtraStore = ExtraStore.Empty,
+  flingBehavior: FlingBehavior? = null,
 ) {
   var markerX by rememberSaveable { mutableStateOf<Double?>(null) }
   var markerSeriesIndex by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -452,6 +455,8 @@ internal fun CartesianChartHostImpl(
                 }
               },
             longPressEnabled = chart.markerController.acceptsLongPress,
+            markerController = chart.markerController,
+            flingBehavior = flingBehavior,
           )
     ) {
       if (size.isEmpty()) return@Canvas

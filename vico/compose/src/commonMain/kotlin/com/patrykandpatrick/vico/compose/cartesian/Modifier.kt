@@ -40,13 +40,15 @@ import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.fastForEach
+import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.marker.Interaction
+import com.patrykandpatrick.vico.compose.cartesian.marker.ScrubMarkerController
 import com.patrykandpatrick.vico.compose.common.Point
 import com.patrykandpatrick.vico.compose.common.detectZoomGestures
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
-private const val BASE_SCROLL_ZOOM_DELTA = 0.1f
+internal const val BASE_SCROLL_ZOOM_DELTA = 0.1f
 
 private fun Offset.toPoint() = Point(x, y)
 
@@ -59,25 +61,37 @@ internal fun Modifier.pointerInput(
   onZoom: ((Float, Offset) -> Unit)?,
   consumeMoveEvents: Boolean,
   longPressEnabled: Boolean,
+  markerController: CartesianMarkerController? = null,
+  flingBehavior: FlingBehavior? = null,
 ): Modifier {
   val defaultFlingBehavior = ScrollableDefaults.flingBehavior()
   val decayAnimationSpec = rememberSplineBasedDecay<Float>()
-  val flingBehavior =
-    remember(scrollState, defaultFlingBehavior, decayAnimationSpec) {
-      if (scrollState.xSnapStep != null) {
-        SnapFlingBehavior(scrollState, decayAnimationSpec)
-      } else {
-        defaultFlingBehavior
-      }
+  // A caller's own behaviour wins. meApp snaps to calendar boundaries — a day on a drag, a week
+  // or a month on a fling — which is not a single x step and so cannot be expressed as xSnapStep.
+  val resolvedFlingBehavior =
+    remember(flingBehavior, scrollState, defaultFlingBehavior, decayAnimationSpec) {
+      flingBehavior
+        ?: if (scrollState.xSnapStep != null) {
+          SnapFlingBehavior(scrollState, decayAnimationSpec)
+        } else {
+          defaultFlingBehavior
+        }
     }
+  val scrubController = markerController as? ScrubMarkerController
   return scrollable(
       state = scrollState.scrollableState,
       orientation = Orientation.Horizontal,
-      enabled = scrollState.scrollEnabled,
+      // Always enabled, so nestedScroll keeps a parent list from stealing a scrub. Whether the
+      // position actually moves is the scroll state's business, not this modifier's.
+      enabled = true,
       reverseDirection = true,
-      flingBehavior = flingBehavior,
+      flingBehavior = resolvedFlingBehavior,
     )
-    .pointerInput(onZoom, onInteraction) {
+    .pointerInput(onZoom, onInteraction, markerController) {
+      if (scrubController != null && onInteraction != null) {
+        detectScrubGestures(scrollState, scrubController, { onInteraction(it) }, onZoom)
+        return@pointerInput
+      }
       awaitPointerEventScope {
         while (true) {
           val event = awaitPointerEvent()
