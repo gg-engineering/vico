@@ -448,7 +448,7 @@ protected constructor(
                 .getBounds(context = this, text = label, rotationDegrees = labelRotationDegrees)
                 .run {
                   translate(
-                    translateX = labelX - if (areLabelsOutsideAtStartOrInsideAtEnd) width else 0f,
+                    translateX = labelX - width.half,
                     translateY =
                       tickCenterY + offsetFromTickCenterY -
                         when (verticalLabelPosition) {
@@ -472,7 +472,9 @@ protected constructor(
           text = label,
           x = labelX,
           y = tickCenterY + offsetFromTickCenterY,
-          horizontalPosition = textHorizontalPosition,
+          // labelX is the gutter's midpoint, so the text is centred on it. Anchoring it by its
+          // start left the numbers in the right half of the gutter, crowding the screen edge.
+          horizontalPosition = Position.Horizontal.Center,
           verticalPosition = verticalLabelPosition,
           rotationDegrees = labelRotationDegrees,
           maxWidth = (maxLabelWidth ?: (layerBounds.width.half - this.tickLength)).toInt(),
