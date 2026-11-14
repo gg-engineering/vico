@@ -452,6 +452,9 @@ internal fun CartesianChartHostImpl(
     }
 
   fun onViewportChange() {
+    // A scrub controller drops its marker on scroll, so there is no position to re-track; replaying
+    // the last interaction per scroll frame only spammed the consumer with dismissals.
+    if (chart.markerController is ScrubMarkerController) return
     lastAcceptedInteraction
       ?.takeIf { chart.markerController.lock == Lock.Position }
       ?.let { onInteraction?.invoke(it) }
