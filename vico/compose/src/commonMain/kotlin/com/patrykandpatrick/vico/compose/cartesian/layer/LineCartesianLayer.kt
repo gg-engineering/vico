@@ -976,8 +976,10 @@ protected constructor(
         xSpacing = xSpacing,
         scalableStartPadding = layerPadding.scalableStart.pixels,
         scalableEndPadding = layerPadding.scalableEnd.pixels,
-        unscalableStartPadding = maxPointSize.half + layerPadding.unscalableStart.pixels,
-        unscalableEndPadding = maxPointSize.half + layerPadding.unscalableEnd.pixels,
+        // The caller's gap is the whole gap. Adding half a point to it narrowed the plot, which
+        // compressed the x positions and left the last separator short of the closing edge.
+        unscalableStartPadding = layerPadding.unscalableStart.pixels,
+        unscalableEndPadding = layerPadding.unscalableEnd.pixels,
       )
     }
   }
