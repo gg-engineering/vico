@@ -600,6 +600,9 @@ internal fun CartesianChartHostImpl(
  */
 private const val MARKER_SETTLE_MS = 100L
 
+/** Below this the axis has not moved, so animating to it is noise rather than motion. */
+private const val RANGE_EPSILON = 0.01f
+
 @OptIn(FlowPreview::class)
 @Composable
 private fun ScrollAwareRangeEffect(
@@ -650,21 +653,29 @@ private fun ScrollAwareRangeEffect(
         val result = visibleEntries?.let { provider.computeDisplayRange(it, xRange) }
         if (result != null) {
           val (range, ticks) = result
-          provider.currentMinY = range.start
-          provider.currentMaxY = range.endInclusive
+          val targetMinY = range.start.toFloat()
+          val targetMaxY = range.endInclusive.toFloat()
           provider.currentTicks = ticks
           onTargetRange(range.start, range.endInclusive)
           if (animMinY.value.isNaN()) {
             // First ever render — snap (no animation from NaN)
-            animMinY.snapTo(range.start.toFloat())
-            animMaxY.snapTo(range.endInclusive.toFloat())
+            provider.currentMinY = range.start
+            provider.currentMaxY = range.endInclusive
+            animMinY.snapTo(targetMinY)
+            animMaxY.snapTo(targetMaxY)
             onAnimatedRange(range.start, range.endInclusive)
-          } else {
-            // Model changed (e.g., metric switch) — animate from old to new
-            launch { animMinY.animateTo(range.start.toFloat(), tween(provider.animDurationMs)) }
-            launch {
-              animMaxY.animateTo(range.endInclusive.toFloat(), tween(provider.animDurationMs))
-            }
+          } else if (
+            abs(targetMinY - animMinY.value) >= RANGE_EPSILON ||
+              abs(targetMaxY - animMaxY.value) >= RANGE_EPSILON
+          ) {
+            // Only when the push actually moves the axis. Re-targeting on every push restarted the
+            // tween from the previous one's velocity, so a burst of pushes — which choosing a
+            // secondary metric produces — shook the top gridline and its label a few pixels.
+            // The animated values are not written to the provider here: the frame collector owns
+            // them, and setting the target first put the axis there for one frame before the
+            // animation dragged it back to where it had started.
+            launch { animMinY.animateTo(targetMinY, tween(provider.animDurationMs)) }
+            launch { animMaxY.animateTo(targetMaxY, tween(provider.animDurationMs)) }
           }
         }
         isFirstScrollUpdate = false
@@ -702,7 +713,8 @@ private fun ScrollAwareRangeEffect(
             provider.settleEpoch++
 
             if (
-              abs(targetMinY - animMinY.value) < 0.01f && abs(targetMaxY - animMaxY.value) < 0.01f
+              abs(targetMinY - animMinY.value) < RANGE_EPSILON &&
+                abs(targetMaxY - animMaxY.value) < RANGE_EPSILON
             )
               return@collectLatest
 
