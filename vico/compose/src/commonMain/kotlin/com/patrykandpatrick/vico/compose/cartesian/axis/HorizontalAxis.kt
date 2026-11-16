@@ -630,12 +630,17 @@ protected constructor(
   ) {
     val label = label ?: return
     if (itemPlacer.getShiftExtremeLabels(context)) return
+    // The reservations below are half a label wide because a centred label overhangs its tick by
+    // half. One anchored to a side does not overhang that side at all, so reserving for it pushed
+    // the chart's start in by half a label — visible only where the labels are wide.
+    val overhangsStart = labelHorizontalPosition != Position.Horizontal.End
+    val overhangsEnd = labelHorizontalPosition != Position.Horizontal.Start
     val ranges = context.ranges
     val maxLabelWidth =
       context.getMaxLabelWidth(layerDimensions, context.internalGetFullXRange(layerDimensions))
     val firstLabelValue = itemPlacer.getFirstLabelValue(context, maxLabelWidth)
     val lastLabelValue = itemPlacer.getLastLabelValue(context, maxLabelWidth)
-    if (firstLabelValue != null) {
+    if (firstLabelValue != null && overhangsStart) {
       val text =
         valueFormatter.formatForAxis(
           context = context,
@@ -657,7 +662,7 @@ protected constructor(
       }
       layerDimensions.ensureValuesAtLeast(unscalableStartPadding = unscalableStartPadding)
     }
-    if (lastLabelValue != null) {
+    if (lastLabelValue != null && overhangsEnd) {
       val text =
         valueFormatter.formatForAxis(
           context = context,
