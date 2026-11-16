@@ -119,21 +119,24 @@ internal fun <T : CartesianLayerModel.Entry> List<T>.getSliceIndices(
   if (isEmpty()) return IntRange.EMPTY
   if (visiblePadding == null) return indices
 
-  var firstVisible = size
-  for (index in indices) {
-    if (this[index].x >= visibleXRangeStart) {
-      firstVisible = index
-      break
-    }
+  // Binary search, not a scan: this runs three times per series per frame, and a chart opened on
+  // its newest data had to walk the whole history each time to find where the window starts.
+  // Entries are ordered by x — the interpolator binary-searches the same list.
+  var lo = 0
+  var hi = size
+  while (lo < hi) {
+    val mid = (lo + hi).ushr(1)
+    if (this[mid].x >= visibleXRangeStart) hi = mid else lo = mid + 1
   }
+  val firstVisible = lo
 
-  var lastVisibleExclusive = size
-  for (index in firstVisible until size) {
-    if (this[index].x > visibleXRangeEnd) {
-      lastVisibleExclusive = index
-      break
-    }
+  lo = firstVisible
+  hi = size
+  while (lo < hi) {
+    val mid = (lo + hi).ushr(1)
+    if (this[mid].x > visibleXRangeEnd) hi = mid else lo = mid + 1
   }
+  val lastVisibleExclusive = lo
 
   val start = (firstVisible - visiblePadding).coerceAtLeast(0)
   val endExclusive = (lastVisibleExclusive + visiblePadding).coerceAtMost(size)
