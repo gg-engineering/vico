@@ -17,6 +17,7 @@
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerInputScope
 import com.patrykandpatrick.vico.compose.cartesian.marker.Interaction
@@ -29,8 +30,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Past this much travel a press has committed to being a scroll or a scrub. */
-private const val MOVEMENT_THRESHOLD = 20f
+/**
+ * How much more vertical than horizontal a drag must be before the page takes it.
+ *
+ * The finger is on a chart that scrolls horizontally, so the chart is the specific target and the
+ * page the general one. Tested as `dx > dy`, any drag a degree off vertical left the chart — which
+ * is every real scrub, because a finger tracking a line is never exactly horizontal.
+ */
+private const val VERTICAL_BIAS = 2f
 
 /** Under this much travel a press and release is a tap. */
 private const val TAP_SLOP = 5f
@@ -49,10 +56,10 @@ private fun Offset.toPoint() = Point(x, y)
  * Press-and-hold to mark a point, then drag along the chart to move the mark.
  *
  * This runs ahead of the scrollable modifier so one press can still become either gesture. A press
- * starts a timer; travelling further than [MOVEMENT_THRESHOLD] before it fires commits to a scroll
- * if the movement is mostly horizontal, or hands the gesture to the parent if it is mostly
- * vertical. Once the timer fires the scroll position is frozen and every event is consumed, which
- * is what stops a parent list stealing the drag.
+ * starts a timer; travelling past the platform's touch slop before it fires commits to a scroll,
+ * or hands the gesture to the parent if the movement is decisively vertical. Once the timer fires
+ * the scroll position is frozen and every event is claimed on the initial pass, which is what stops
+ * an ancestor stealing the drag.
  */
 internal suspend fun PointerInputScope.detectScrubGestures(
   scrollState: VicoScrollState,
@@ -67,6 +74,14 @@ internal suspend fun PointerInputScope.detectScrubGestures(
 
   awaitPointerEventScope {
     while (true) {
+      // Claimed before anyone else sees it, not after. Consuming on the main pass only stops an
+      // ancestor that waits for that pass; the page's vertical scroll and the segment pager both
+      // sit above this one, and a drag a few degrees off horizontal reached them while the marker
+      // was being dragged. A scrub owns the whole gesture or it is not a scrub.
+      val scrubbing = mode == Mode.MARKER_SELECTION || mode == Mode.MARKER_SCRUBBING
+      val initial = awaitPointerEvent(PointerEventPass.Initial)
+      if (scrubbing) initial.changes.forEach { it.consume() }
+
       val event = awaitPointerEvent()
       val position = event.changes.first().position
       val point = position.toPoint()
@@ -95,29 +110,32 @@ internal suspend fun PointerInputScope.detectScrubGestures(
         event.type == PointerEventType.Move ->
           when (mode) {
             Mode.DECIDING ->
-              if (travel > MOVEMENT_THRESHOLD) {
+              // The platform's own slop, not a constant of ours: the parent commits at that
+              // distance, and a fixed pixel count wins the race on one density and loses it on
+              // the next.
+              if (travel > viewConfiguration.touchSlop) {
                 val dx = pressedAt?.let { abs(position.x - it.x) } ?: 0f
                 val dy = pressedAt?.let { abs(position.y - it.y) } ?: 0f
                 holdTimer?.cancel()
                 holdTimer = null
                 scrollState.isScrollFrozen = false
-                if (dx > dy) {
+                if (dy > dx * VERTICAL_BIAS) {
+                  // Decisively vertical: the page owns this one.
+                  mode = Mode.NONE
+                } else {
                   mode = Mode.SCROLLING
                   controller.isScrubbing = false
                   if (controller.hasActiveMarker) {
                     controller.onDismiss()
                     onInteraction(Interaction.Release(point))
                   }
-                } else {
-                  // Mostly vertical: the parent list owns this one.
-                  mode = Mode.NONE
                 }
               }
             // Small movements are left for the scrollable modifier, so it can cancel a fling.
 
             Mode.MARKER_SELECTION,
             Mode.MARKER_SCRUBBING -> {
-              if (travel > MOVEMENT_THRESHOLD) mode = Mode.MARKER_SCRUBBING
+              if (travel > viewConfiguration.touchSlop) mode = Mode.MARKER_SCRUBBING
               event.changes.forEach { it.consume() }
               onInteraction(Interaction.Move(point))
             }
