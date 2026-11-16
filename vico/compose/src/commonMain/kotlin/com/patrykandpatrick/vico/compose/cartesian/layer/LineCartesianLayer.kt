@@ -533,6 +533,24 @@ protected constructor(
   private val srcInPaint = Paint().apply { blendMode = BlendMode.SrcIn }
 
   protected val cacheKeyNamespace: CacheStore.KeyNamespace = CacheStore.KeyNamespace()
+  private var indexedSeries: List<LineCartesianLayerModel.Entry>? = null
+  private var cachedSeriesIndex: Map<Double, Int>? = null
+
+  /**
+   * Where each reading sits in [series], for looking a mapped value up by x.
+   *
+   * Held between frames because the series only changes when the model does, and a map over every
+   * reading the user has ever recorded was being built on the draw path, twice per series — once
+   * for the line and once for its points.
+   */
+  private fun indexOfSeries(series: List<LineCartesianLayerModel.Entry>): Map<Double, Int> {
+    cachedSeriesIndex?.let { if (indexedSeries === series) return it }
+    // Reference identity, not equality: hashing the list is itself O(n) over every reading.
+    val index = series.withIndex().associate { it.value.x to it.index }
+    indexedSeries = series
+    cachedSeriesIndex = index
+    return index
+  }
 
   override val markerTargets: Map<Double, List<CartesianMarker.Target>> = _markerTargets
 
@@ -618,9 +636,13 @@ protected constructor(
         // Once per series, not once per pass: the index is a map over every reading, and the line
         // and the points each built their own copy of it every frame.
         val mappedY =
-          yMapper?.map(series, ranges.getTargetYRange(verticalAxisPosition), getVisibleXRange())
-        val mappedIndex =
-          if (mappedY != null) series.withIndex().associate { it.value.x to it.index } else null
+          yMapper?.map(
+            series,
+            ranges.getTargetYRange(verticalAxisPosition),
+            getVisibleXRange(),
+            model.extraStore,
+          )
+        val mappedIndex = if (mappedY != null) indexOfSeries(series) else null
 
         val points = mutableListOf<Offset>()
         val visibleIndexRange =

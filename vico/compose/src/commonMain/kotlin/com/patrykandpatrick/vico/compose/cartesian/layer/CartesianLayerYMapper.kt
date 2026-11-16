@@ -18,6 +18,7 @@ package com.patrykandpatrick.vico.compose.cartesian.layer
 
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 
 /**
  * Restates a series' _y_ values against the axis the chart is drawing, so a line in one unit can
@@ -37,6 +38,7 @@ public interface CartesianLayerYMapper {
     series: List<LineCartesianLayerModel.Entry>,
     targetYRange: CartesianChartRanges.YRange,
     visibleXRange: ClosedFloatingPointRange<Double>,
+    extraStore: ExtraStore,
   ): DoubleArray?
 
   /** Opacity for the mapped line, for fading one unit out as another fades in. */
