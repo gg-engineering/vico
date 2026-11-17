@@ -533,24 +533,6 @@ protected constructor(
   private val srcInPaint = Paint().apply { blendMode = BlendMode.SrcIn }
 
   protected val cacheKeyNamespace: CacheStore.KeyNamespace = CacheStore.KeyNamespace()
-  private var indexedSeries: List<LineCartesianLayerModel.Entry>? = null
-  private var cachedSeriesIndex: Map<Double, Int>? = null
-
-  /**
-   * Where each reading sits in [series], for looking a mapped value up by x.
-   *
-   * Held between frames because the series only changes when the model does, and a map over every
-   * reading the user has ever recorded was being built on the draw path, twice per series — once
-   * for the line and once for its points.
-   */
-  private fun indexOfSeries(series: List<LineCartesianLayerModel.Entry>): Map<Double, Int> {
-    cachedSeriesIndex?.let { if (indexedSeries === series) return it }
-    // Reference identity, not equality: hashing the list is itself O(n) over every reading.
-    val index = series.withIndex().associate { it.value.x to it.index }
-    indexedSeries = series
-    cachedSeriesIndex = index
-    return index
-  }
 
   override val markerTargets: Map<Double, List<CartesianMarker.Target>> = _markerTargets
 
@@ -642,7 +624,6 @@ protected constructor(
             getVisibleXRange(),
             model.extraStore,
           )
-        val mappedIndex = if (mappedY != null) indexOfSeries(series) else null
 
         val points = mutableListOf<Offset>()
         val visibleIndexRange =
@@ -654,7 +635,6 @@ protected constructor(
             drawFullLineLength = line.stroke is LineStroke.Dashed,
             points = points,
             mappedY = mappedY,
-            mappedIndex = mappedIndex,
           )
 
         if (points.isNotEmpty() && !visibleIndexRange.isEmpty()) {
@@ -664,8 +644,7 @@ protected constructor(
         line.fillColor?.let { color ->
           line.draw(context, linePath, color, verticalAxisPosition)
           forEachPointInBounds(
-            series, drawingStart, pointInfoMap, mappedY = mappedY, mappedIndex = mappedIndex,
-          ) { entry, x, y, _, _ ->
+            series, drawingStart, pointInfoMap, mappedY = mappedY,          ) { entry, x, y, _, _ ->
             updateMarkerTargets(entry, seriesKey, x, y, color)
           }
         }
@@ -677,14 +656,13 @@ protected constructor(
             lineCanvas.drawImage(lineFillBitmap, Offset.Zero, srcInPaint)
             canvas.drawImage(lineBitmap, Offset.Zero, EmptyPaint)
             forEachPointInBounds(
-              series, drawingStart, pointInfoMap, mappedY = mappedY, mappedIndex = mappedIndex,
-            ) { entry, x, y, _, _ ->
+              series, drawingStart, pointInfoMap, mappedY = mappedY,            ) { entry, x, y, _, _ ->
               updateMarkerTargets(entry, seriesKey, x, y, lineFillBitmap)
             }
           }
 
         drawPointsAndDataLabels(
-          line, series, seriesKey, seriesIndex, drawingStart, pointInfoMap, mappedY, mappedIndex,
+          line, series, seriesKey, seriesIndex, drawingStart, pointInfoMap, mappedY,
         )
       }
 
@@ -743,7 +721,6 @@ protected constructor(
     drawingStart: Float,
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
     mappedY: DoubleArray? = null,
-    mappedIndex: Map<Double, Int>? = null,
   ) {
     // forEachPointInBounds always runs one point past the edge, so the line can carry on to the
     // boundary instead of stopping at the last point inside. The line needs that; the dot on top
@@ -755,7 +732,6 @@ protected constructor(
       drawingStart = drawingStart,
       pointInfoMap = pointInfoMap,
       mappedY = mappedY,
-      mappedIndex = mappedIndex,
     ) { chartEntry, x, y, previousX, nextX ->
       val point = line.pointProvider?.getPointOrThrow(chartEntry, model.extraStore)
       // Skipped rather than clipped: half a dot reads as a rendering fault, not as one sliding in.
@@ -845,7 +821,6 @@ protected constructor(
     drawFullLineLength: Boolean = false,
     points: MutableList<Offset>,
     mappedY: DoubleArray? = null,
-    mappedIndex: Map<Double, Int>? = null,
   ): IntRange {
     val minX = ranges.minX
     val xStep = ranges.xStep
@@ -859,9 +834,10 @@ protected constructor(
       drawingStart +
         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
 
-    fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
-      val yRange = ranges.getYRange(verticalAxisPosition)
-      val y = mappedIndex?.get(entry.x)?.let { mappedY?.getOrNull(it) } ?: entry.y
+    val yRange = ranges.getYRange(verticalAxisPosition)
+
+    fun getDrawY(entry: LineCartesianLayerModel.Entry, index: Int): Float {
+      val y = mappedY?.getOrNull(index) ?: entry.y
       return layerBounds.bottom -
         (pointInfoMap?.get(entry.x)?.y ?: ((y - yRange.minY) / yRange.length).toFloat()) *
           layerBounds.height
@@ -875,8 +851,8 @@ protected constructor(
 
     if (visibleIndices.isEmpty()) return IntRange.EMPTY
 
-    series.subList(visibleIndices.first, visibleIndices.last + 1).forEach { entry ->
-      points += Offset(getDrawX(entry), getDrawY(entry))
+    series.subList(visibleIndices.first, visibleIndices.last + 1).forEachIndexed { offset, entry ->
+      points += Offset(getDrawX(entry), getDrawY(entry, visibleIndices.first + offset))
     }
 
     for (index in points.indices) {
@@ -913,7 +889,6 @@ protected constructor(
     pointInfoMap: Map<Double, LineCartesianLayerDrawingModel.Entry>?,
     drawFullLineLength: Boolean = false,
     mappedY: DoubleArray? = null,
-    mappedIndex: Map<Double, Int>? = null,
     action:
       (
         entry: LineCartesianLayerModel.Entry,
@@ -937,9 +912,10 @@ protected constructor(
       drawingStart +
         layoutDirectionMultiplier * layerDimensions.xSpacing * ((entry.x - minX) / xStep).toFloat()
 
-    fun getDrawY(entry: LineCartesianLayerModel.Entry): Float {
-      val yRange = ranges.getYRange(verticalAxisPosition)
-      val y = mappedIndex?.get(entry.x)?.let { mappedY?.getOrNull(it) } ?: entry.y
+    val yRange = ranges.getYRange(verticalAxisPosition)
+
+    fun getDrawY(entry: LineCartesianLayerModel.Entry, index: Int): Float {
+      val y = mappedY?.getOrNull(index) ?: entry.y
       return layerBounds.bottom -
         (pointInfoMap?.get(entry.x)?.y ?: ((y - yRange.minY) / yRange.length).toFloat()) *
           layerBounds.height
@@ -971,7 +947,7 @@ protected constructor(
       ) {
         continue
       }
-      action(entry, immutableX, getDrawY(entry), previousX, nextX)
+      action(entry, immutableX, getDrawY(entry, index), previousX, nextX)
       if (isLtr && immutableX > boundsEnd || isLtr.not() && immutableX < boundsEnd) return
     }
   }

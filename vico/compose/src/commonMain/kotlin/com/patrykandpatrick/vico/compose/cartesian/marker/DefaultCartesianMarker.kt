@@ -122,11 +122,18 @@ public open class DefaultCartesianMarker(
     targets: List<CartesianMarker.Target>,
   ) {
     with(context) {
-      // Per-series Y values — shared by yLabelCallback and the horizontal crosshair formatter.
-      val yValuesPerSeries: List<List<Double>> = targets.map { target ->
-        if (target is LineCartesianLayerMarkerTarget) target.points.map { it.entry.y }
-        else emptyList()
-      }
+      // Shared by the callback and the horizontal crosshair formatter, and built only when one of
+      // them exists. Built unconditionally it allocated a list per series on every frame of a
+      // scrub for a chart that wanted neither.
+      val yValuesPerSeries: List<List<Double>> =
+        if (yLabelCallback == null && horizontalLabelPosition == null) {
+          emptyList()
+        } else {
+          targets.map { target ->
+            if (target is LineCartesianLayerMarkerTarget) target.points.map { it.entry.y }
+            else emptyList()
+          }
+        }
       // Draw both crosshair lines first so indicators (dots) paint on top of the
       // intersection — matches the vertical guideline's visual ordering so the
       // hovered data point is never obscured by the crosshair.
@@ -712,6 +719,11 @@ public fun rememberDefaultCartesianMarker(
     horizontalLabelPosition,
     restingLabel,
     labelGap,
+    // Nullness, not the lambda: the marker skips per-frame work when a callback is absent, so the
+    // wrapper must not manufacture one, and a caller switching a callback on has to be seen.
+    yLabelCallback != null,
+    horizontalLabelFormatter != null,
+    restingLabelFormatter != null,
   ) {
     DefaultCartesianMarker(
       label = label,
@@ -720,13 +732,17 @@ public fun rememberDefaultCartesianMarker(
       indicator = indicator,
       indicatorSize = indicatorSize,
       guideline = guideline,
-      yLabelCallback = { values -> callbackRef.value?.invoke(values) },
+      yLabelCallback = yLabelCallback?.let { { values -> callbackRef.value?.invoke(values) } },
       horizontalLabelPosition = horizontalLabelPosition,
-      horizontalLabelFormatter = { values, x -> horizontalFormatterRef.value?.invoke(values, x) },
+      horizontalLabelFormatter =
+        horizontalLabelFormatter?.let {
+          { values, x -> horizontalFormatterRef.value?.invoke(values, x) }
+        },
       restingLabel = restingLabel,
       // Read through the ref, so a formatter closing over changing state does not re-create the
       // marker — the same treatment the other two callbacks get.
-      restingLabelFormatter = { range -> restingFormatterRef.value?.invoke(range) },
+      restingLabelFormatter =
+        restingLabelFormatter?.let { { range -> restingFormatterRef.value?.invoke(range) } },
       labelGap = labelGap,
     )
   }

@@ -174,21 +174,27 @@ public fun CartesianChartHost(
     if (!animatedMaxY.isNaN()) animatedMaxY
     else firstScrollAwareProvider?.seedMaxY?.takeIf { !it.isNaN() } ?: Double.NaN
 
+  // Remembered, and the wrapper carries equality. Rebuilt inline it was a new identity every
+  // frame of the y animation, and it is a key of the measuring context and of the interaction
+  // callback — which is in turn a key of the gesture modifier, so a press and hold could not
+  // survive its own hold delay while anything on screen was animating.
   val ranges =
-    if (
-      !effectiveMinY.isNaN() &&
-        !effectiveMaxY.isNaN() &&
-        initialRanges !== CartesianChartRanges.Empty
-    ) {
-      AnimatedYCartesianChartRanges(
-        initialRanges,
-        effectiveMinY,
-        effectiveMaxY,
-        if (!targetMinY.isNaN()) targetMinY else effectiveMinY,
-        if (!targetMaxY.isNaN()) targetMaxY else effectiveMaxY,
-      )
-    } else {
-      initialRanges
+    remember(initialRanges, effectiveMinY, effectiveMaxY, targetMinY, targetMaxY) {
+      if (
+        !effectiveMinY.isNaN() &&
+          !effectiveMaxY.isNaN() &&
+          initialRanges !== CartesianChartRanges.Empty
+      ) {
+        AnimatedYCartesianChartRanges(
+          initialRanges,
+          effectiveMinY,
+          effectiveMaxY,
+          if (!targetMinY.isNaN()) targetMinY else effectiveMinY,
+          if (!targetMaxY.isNaN()) targetMaxY else effectiveMaxY,
+        )
+      } else {
+        initialRanges
+      }
     }
 
   if (model != null) {
@@ -729,9 +735,11 @@ private fun ScrollAwareRangeEffect(
 
       // Push animated values to Compose State on each animation frame
       LaunchedEffect(Unit) {
-        snapshotFlow { animMinY.value to animMaxY.value }
-          .collect { (minY, maxY) ->
-            // Skip NaN frames (before initialization)
+        // One scalar, read beside it. A Pair here allocated on every animation frame — which the
+        // comment beside the two Floats above says this deliberately avoids.
+        snapshotFlow { animMinY.value }
+          .collect { minY ->
+            val maxY = animMaxY.value
             if (minY.isNaN() || maxY.isNaN()) return@collect
             provider.currentMinY = minY.toDouble()
             provider.currentMaxY = maxY.toDouble()
@@ -748,10 +756,10 @@ private fun ScrollAwareRangeEffect(
  */
 private class AnimatedYCartesianChartRanges(
   private val delegate: CartesianChartRanges,
-  animMinY: Double,
-  animMaxY: Double,
-  targetMinY: Double = animMinY,
-  targetMaxY: Double = animMaxY,
+  private val animMinY: Double,
+  private val animMaxY: Double,
+  private val targetMinY: Double = animMinY,
+  private val targetMaxY: Double = animMaxY,
 ) : CartesianChartRanges {
   override val minX: Double
     get() = delegate.minX
@@ -782,4 +790,25 @@ private class AnimatedYCartesianChartRanges(
 
   override fun getTargetYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
     targetRange
+
+  // Carried, not inherited from Any: this is a key of the measuring context and of the
+  // interaction callback, and a frame of the y animation produces the same four values far more
+  // often than it produces new ones.
+  override fun equals(other: Any?): Boolean =
+    this === other ||
+      other is AnimatedYCartesianChartRanges &&
+        delegate == other.delegate &&
+        animMinY == other.animMinY &&
+        animMaxY == other.animMaxY &&
+        targetMinY == other.targetMinY &&
+        targetMaxY == other.targetMaxY
+
+  override fun hashCode(): Int {
+    var result = delegate.hashCode()
+    result = 31 * result + animMinY.hashCode()
+    result = 31 * result + animMaxY.hashCode()
+    result = 31 * result + targetMinY.hashCode()
+    result = 31 * result + targetMaxY.hashCode()
+    return result
+  }
 }
