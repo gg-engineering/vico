@@ -519,7 +519,10 @@ public open class DefaultCartesianMarker(
         indicator == other.indicator &&
         indicatorSize == other.indicatorSize &&
         guideline == other.guideline &&
-        horizontalLabelPosition == other.horizontalLabelPosition
+        horizontalLabelPosition == other.horizontalLabelPosition &&
+        restingLabel == other.restingLabel &&
+        restingLabelFormatter == other.restingLabelFormatter &&
+        labelGap == other.labelGap
 
   override fun hashCode(): Int {
     var result = label?.hashCode() ?: 0
@@ -530,6 +533,9 @@ public open class DefaultCartesianMarker(
     result = 31 * result + guideline.hashCode()
     result = 31 * result + horizontalLabelPosition.hashCode()
     return result
+    result = 31 * result + restingLabel.hashCode()
+    result = 31 * result + restingLabelFormatter.hashCode()
+    result = 31 * result + labelGap.hashCode()
   }
 
   /** Specifies the position of a [DefaultCartesianMarker]’s label. */

@@ -559,10 +559,10 @@ protected constructor(
     verticalAxisPosition,
     drawingModelInterpolator,
     ExtraStore.Key(),
-    yMapper,
-    markerTargetsEnabled,
-    contributesYRange,
-    alwaysUseLiveRange,
+    yMapper = yMapper,
+    markerTargetsEnabled = markerTargetsEnabled,
+    contributesYRange = contributesYRange,
+    alwaysUseLiveRange = alwaysUseLiveRange,
   )
 
   override fun drawInternal(context: CartesianDrawingContext, model: LineCartesianLayerModel) {
@@ -1084,10 +1084,10 @@ protected constructor(
       verticalAxisPosition,
       drawingModelInterpolator,
       drawingModelKey,
-      yMapper,
-      markerTargetsEnabled,
-      contributesYRange,
-      alwaysUseLiveRange,
+      yMapper = yMapper,
+      markerTargetsEnabled = markerTargetsEnabled,
+      contributesYRange = contributesYRange,
+      alwaysUseLiveRange = alwaysUseLiveRange,
     )
 
   override fun equals(other: Any?): Boolean =
@@ -1097,7 +1097,11 @@ protected constructor(
         pointSpacing == other.pointSpacing &&
         rangeProvider == other.rangeProvider &&
         verticalAxisPosition == other.verticalAxisPosition &&
-        drawingModelInterpolator == other.drawingModelInterpolator
+        drawingModelInterpolator == other.drawingModelInterpolator &&
+        yMapper == other.yMapper &&
+        markerTargetsEnabled == other.markerTargetsEnabled &&
+        contributesYRange == other.contributesYRange &&
+        alwaysUseLiveRange == other.alwaysUseLiveRange
 
   override fun hashCode(): Int {
     var result = lineProvider.hashCode()
@@ -1106,6 +1110,10 @@ protected constructor(
     result = 31 * result + (verticalAxisPosition?.hashCode() ?: 0)
     result = 31 * result + drawingModelInterpolator.hashCode()
     return result
+    result = 31 * result + yMapper.hashCode()
+    result = 31 * result + markerTargetsEnabled.hashCode()
+    result = 31 * result + contributesYRange.hashCode()
+    result = 31 * result + alwaysUseLiveRange.hashCode()
   }
 
   /** Provides access to [Line] factory functions. */
@@ -1178,8 +1186,8 @@ public fun rememberLineCartesianLayer(
     drawingModelInterpolator,
     yMapper,
     markerTargetsEnabled,
-    alwaysUseLiveRange,
     contributesYRange,
+    alwaysUseLiveRange,
   ) {
     val lineCartesianLayer =
       lineCartesianLayerWrapper?.copy(
@@ -1188,10 +1196,10 @@ public fun rememberLineCartesianLayer(
         rangeProvider,
         verticalAxisPosition,
         drawingModelInterpolator,
-        yMapper,
-        markerTargetsEnabled,
-        alwaysUseLiveRange,
-        contributesYRange,
+        yMapper = yMapper,
+        markerTargetsEnabled = markerTargetsEnabled,
+        contributesYRange = contributesYRange,
+        alwaysUseLiveRange = alwaysUseLiveRange,
       )
         ?: LineCartesianLayer(
           lineProvider,
@@ -1199,10 +1207,10 @@ public fun rememberLineCartesianLayer(
           rangeProvider,
           verticalAxisPosition,
           drawingModelInterpolator,
-          yMapper,
-          markerTargetsEnabled,
-          alwaysUseLiveRange,
-          contributesYRange,
+          yMapper = yMapper,
+          markerTargetsEnabled = markerTargetsEnabled,
+          contributesYRange = contributesYRange,
+          alwaysUseLiveRange = alwaysUseLiveRange,
         )
     lineCartesianLayerWrapper = lineCartesianLayer
     lineCartesianLayer

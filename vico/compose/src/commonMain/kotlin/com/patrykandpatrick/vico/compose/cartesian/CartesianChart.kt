@@ -741,7 +741,8 @@ internal constructor(
         topAxis == other.topAxis &&
         endAxis == other.endAxis &&
         bottomAxis == other.bottomAxis &&
-        markerController == other.markerController
+        markerController == other.markerController &&
+        visibleLabelsCount == other.visibleLabelsCount
 
   override fun hashCode(): Int {
     var result = marker.hashCode()
@@ -760,6 +761,7 @@ internal constructor(
     result = 31 * result + id.hashCode()
     result = 31 * result + markerController.hashCode()
     return result
+    result = 31 * result + visibleLabelsCount.hashCode()
   }
 
   /** Facilitates adding persistent [CartesianMarker]s to [CartesianChart]s. */
