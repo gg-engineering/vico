@@ -30,7 +30,9 @@ import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -78,6 +80,14 @@ internal fun Modifier.pointerInput(
         }
     }
   val scrubController = markerController as? ScrubMarkerController
+  // Read through, and keyed on nothing that moves. These arrive as a fresh lambda on every
+  // recomposition — one of their own keys is rebuilt per frame — and as a key of pointerInput
+  // that cancelled the gesture coroutine and took the press, the travel so far and the hold timer
+  // with it. A hold could only ever fire on a screen where nothing else was animating.
+  val currentOnInteraction by rememberUpdatedState(onInteraction)
+  val currentOnZoom by rememberUpdatedState(onZoom)
+  val hasInteraction = onInteraction != null
+  val hasZoom = onZoom != null
   return scrollable(
       state = scrollState.scrollableState,
       orientation = Orientation.Horizontal,
@@ -87,9 +97,14 @@ internal fun Modifier.pointerInput(
       reverseDirection = true,
       flingBehavior = resolvedFlingBehavior,
     )
-    .pointerInput(onZoom, onInteraction, markerController) {
-      if (scrubController != null && onInteraction != null) {
-        detectScrubGestures(scrollState, scrubController, { onInteraction(it) }, onZoom)
+    .pointerInput(markerController, hasInteraction, hasZoom) {
+      if (scrubController != null && hasInteraction) {
+        detectScrubGestures(
+          scrollState,
+          scrubController,
+          { currentOnInteraction?.invoke(it) },
+          { zoom, centroid -> currentOnZoom?.invoke(zoom, centroid) },
+        )
         return@pointerInput
       }
       awaitPointerEventScope {
@@ -101,31 +116,33 @@ internal fun Modifier.pointerInput(
             when {
               event.type == PointerEventType.Scroll &&
                 scrollState.scrollEnabled &&
-                onZoom != null -> {
-                onZoom(
+                currentOnZoom != null -> {
+                currentOnZoom?.invoke(
                   1 - event.changes.first().scrollDelta.y * BASE_SCROLL_ZOOM_DELTA,
                   event.changes.first().position,
                 )
                 true
               }
-              onInteraction == null -> continue
+              currentOnInteraction == null -> continue
               event.type == PointerEventType.Press && event.changes.size == 1 -> {
-                onInteraction(Interaction.Press(pointerPosition))
+                currentOnInteraction?.invoke(Interaction.Press(pointerPosition))
                 false
               }
               event.type == PointerEventType.Release || event.type == PointerEventType.Press -> {
-                onInteraction(Interaction.Release(pointerPosition))
+                currentOnInteraction?.invoke(Interaction.Release(pointerPosition))
                 false
               }
               event.type == PointerEventType.Move -> {
-                onInteraction(Interaction.Move(pointerPosition))
+                currentOnInteraction?.invoke(Interaction.Move(pointerPosition))
                 consumeMoveEvents && !scrollState.scrollEnabled
               }
               event.type == PointerEventType.Enter ->
-                onInteraction(Interaction.Enter(pointerPosition))
+                currentOnInteraction?.invoke(Interaction.Enter(pointerPosition)) ?: false
               event.type == PointerEventType.Exit -> {
                 val isInsideChartBounds = position.fits(size)
-                onInteraction(Interaction.Exit(pointerPosition, isInsideChartBounds))
+                currentOnInteraction?.invoke(
+                  Interaction.Exit(pointerPosition, isInsideChartBounds)
+                ) ?: false
               }
               else -> false
             }
