@@ -162,6 +162,7 @@ public class ScrollAwareRangeProvider(
     if (start.isNaN() || end.isNaN() || end <= start) return
     val info =
       ScrollInfo(
+        model = null,
         scrollPixels = 0f,
         xSpacing = 1f,
         chartWidth = 0f,
@@ -308,6 +309,13 @@ public class ScrollAwareRangeProvider(
   }
 
   internal data class ScrollInfo(
+    /**
+     * The model this geometry was measured for.
+     *
+     * [scrollUpdates] replays, so a reader that wants the first measurement of a *new* model has
+     * to say so — `first()` alone resumes at once with the previous model's geometry.
+     */
+    val model: Any?,
     val scrollPixels: Float,
     val xSpacing: Float,
     val chartWidth: Float,

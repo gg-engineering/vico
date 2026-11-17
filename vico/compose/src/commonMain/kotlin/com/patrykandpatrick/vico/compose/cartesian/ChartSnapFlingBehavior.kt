@@ -86,7 +86,10 @@ internal class ChartSnapFlingBehavior(
       if (isDrag) {
         currentX
       } else {
-        val decayDistance = initialVelocity / (config.animation.decayFrictionMultiplier * 4.5f)
+        // The multiplier comes from a public data class the caller fills in. At zero the
+        // projected distance is infinite and reaches the snap as NaN.
+        val friction = config.animation.decayFrictionMultiplier.takeIf { it > 0f } ?: 2f
+        val decayDistance = initialVelocity / (friction * 4.5f)
         scrollState.scrollValueToX(scrollState.value + decayDistance)
       }
 

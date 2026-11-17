@@ -145,12 +145,17 @@ public fun rememberScrubMarkerController(
     ((clickX: Double?, targets: List<Double>, interaction: Interaction?) -> Double?)? =
     null,
 ): ScrubMarkerController {
-  // rememberUpdatedState keeps the callback reference fresh across recompositions
-  // while the controller instance stays stable (keyed on delayMs only).
+  // Read through, so a callback closing over changing state does not rebuild the controller.
+  // Keyed on whether one was given, not on the lambda: wrapping absence in a non-null lambda
+  // made the host take the consumer branch always, and the documented fallback to the nearest
+  // target was unreachable through this factory.
   val callbackRef = rememberUpdatedState(onMarkerIndexChanged)
-  return remember(delayMs) {
-    ScrubMarkerController(delayMs) { clickX, targets, interaction ->
-      callbackRef.value?.invoke(clickX, targets, interaction)
-    }
+  val hasCallback = onMarkerIndexChanged != null
+  return remember(delayMs, hasCallback) {
+    ScrubMarkerController(
+      delayMs,
+      if (!hasCallback) null
+      else { clickX, targets, interaction -> callbackRef.value?.invoke(clickX, targets, interaction) },
+    )
   }
 }

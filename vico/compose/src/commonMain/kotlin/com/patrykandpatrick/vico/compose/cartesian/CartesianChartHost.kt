@@ -44,6 +44,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -568,6 +569,7 @@ internal fun CartesianChartHostImpl(
           if (chart.marker != null) visibleXRanges.tryEmit(visibleRange)
           val scrollInfo =
             ScrollAwareRangeProvider.ScrollInfo(
+              model,
               scrollPixels,
               xSpacing,
               chartWidth,
@@ -649,9 +651,11 @@ private fun ScrollAwareRangeEffect(
       LaunchedEffect(model) {
         model.models.getOrNull(layerIndex) as? LineCartesianLayerModel ?: return@LaunchedEffect
 
-        // Wait for first Canvas draw to provide visible-window scroll info.
+        // The first measurement taken for THIS model. The flow replays, so a bare first()
+        // resumed immediately with the geometry of the model being replaced and the new range
+        // was computed from a window that no longer described the data.
         isFirstScrollUpdate = true
-        val firstScrollInfo = provider.scrollUpdates.first()
+        val firstScrollInfo = provider.scrollUpdates.first { it.model === model }
         val visibleEntries = provider.computeVisibleEntries(firstScrollInfo)
         val xRange = firstScrollInfo.visibleXStart..firstScrollInfo.visibleXEnd
         val result = visibleEntries?.let { provider.computeDisplayRange(it, xRange) }
@@ -721,15 +725,13 @@ private fun ScrollAwareRangeEffect(
             provider.currentTicks = newTicks
             onTargetRange(targetMinY.toDouble(), targetMaxY.toDouble())
 
-            // Animate range — chart content scales smoothly
-            val minJob = launch {
-              animMinY.animateTo(targetMinY, tween(provider.animDurationMs))
+            // Inside a scope of its own. collectLatest's action is a plain suspend function with
+            // no scope receiver, so these resolved against the enclosing effect: cancelling the
+            // block abandoned the joins below while the two animations carried on as siblings.
+            coroutineScope {
+              launch { animMinY.animateTo(targetMinY, tween(provider.animDurationMs)) }
+              launch { animMaxY.animateTo(targetMaxY, tween(provider.animDurationMs)) }
             }
-            val maxJob = launch {
-              animMaxY.animateTo(targetMaxY, tween(provider.animDurationMs))
-            }
-            minJob.join()
-            maxJob.join()
           }
       }
 

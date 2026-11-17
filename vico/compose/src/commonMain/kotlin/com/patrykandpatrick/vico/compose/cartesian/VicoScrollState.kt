@@ -190,7 +190,10 @@ public class VicoScrollState {
   public fun xToScrollValue(x: Double): Float? {
     val ctx = context ?: return null
     val dims = layerDimensions ?: return null
-    return dims.startPadding + ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
+    // Guarded like its sibling below and like scrollValueToX: a chart measured before its data
+    // arrives has a zero step, and the infinity that produced travelled into a scroll position.
+    val xStep = ctx.ranges.xStep.takeIf { it > 0.0 } ?: return null
+    return dims.startPadding + ((x - ctx.ranges.minX) / xStep).toFloat() * dims.xSpacing
   }
 
   /**
@@ -203,7 +206,8 @@ public class VicoScrollState {
   public fun xToScrollValueBehindStartInset(x: Double): Float? {
     val ctx = context ?: return null
     val dims = layerDimensions ?: return null
-    return ((x - ctx.ranges.minX) / ctx.ranges.xStep).toFloat() * dims.xSpacing
+    val xStep = ctx.ranges.xStep.takeIf { it > 0.0 } ?: return null
+    return ((x - ctx.ranges.minX) / xStep).toFloat() * dims.xSpacing
   }
 
   /** The data x value at [scrollPixels], or at the current scroll when null. */
@@ -327,6 +331,9 @@ public class VicoScrollState {
     context = null
     layerDimensions = null
     bounds = null
+    // Assigned from inside the draw lambda, so it holds that frame's canvas and draw scope.
+    // The state outlives the host that set it.
+    drawingContext = null
   }
 
   /** Triggers a scroll. */

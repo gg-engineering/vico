@@ -44,6 +44,15 @@ private const val TAP_SLOP = 5f
 
 private enum class Mode {
   NONE,
+
+  /**
+   * The page took the gesture.
+   *
+   * Distinct from [NONE], which is the resting state and still reports movement: a marker already
+   * on screen was repositioned to wherever the finger ended after the page had scrolled under it,
+   * so it jumped on lift. Once the chart has given a drag away it says nothing more about it.
+   */
+  ABANDONED,
   DECIDING,
   MARKER_SELECTION,
   MARKER_SCRUBBING,
@@ -121,7 +130,7 @@ internal suspend fun PointerInputScope.detectScrubGestures(
                 scrollState.isScrollFrozen = false
                 if (dy > dx * VERTICAL_BIAS) {
                   // Decisively vertical: the page owns this one.
-                  mode = Mode.NONE
+                  mode = Mode.ABANDONED
                 } else {
                   mode = Mode.SCROLLING
                   controller.isScrubbing = false
@@ -142,6 +151,8 @@ internal suspend fun PointerInputScope.detectScrubGestures(
 
             // Events flow to the scrollable modifier untouched.
             Mode.SCROLLING -> Unit
+
+            Mode.ABANDONED -> Unit
 
             Mode.NONE -> onInteraction(Interaction.Move(point))
           }
@@ -165,7 +176,8 @@ internal suspend fun PointerInputScope.detectScrubGestures(
               onInteraction(Interaction.Release(point))
             }
 
-            Mode.SCROLLING -> Unit
+            Mode.SCROLLING,
+            Mode.ABANDONED -> Unit
             Mode.NONE -> onInteraction(Interaction.Release(point))
           }
           mode = Mode.NONE
