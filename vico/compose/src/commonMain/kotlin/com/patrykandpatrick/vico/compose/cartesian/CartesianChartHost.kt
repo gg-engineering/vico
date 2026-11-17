@@ -426,7 +426,7 @@ internal fun CartesianChartHostImpl(
             val scrubCallback = scrubController?.onMarkerIndexChanged
             if (scrubCallback != null) {
               if (shouldShow) {
-                val chosen = scrubCallback(x, chart.allMarkerTargetXValues, interaction)
+                val chosen = scrubCallback(x, chart.markerTargetXValues, interaction)
                 markerX = chosen
                 markerSeriesIndex = if (chosen != null) seriesIndex else null
               } else {

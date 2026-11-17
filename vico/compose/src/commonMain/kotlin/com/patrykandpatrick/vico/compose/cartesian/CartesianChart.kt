@@ -434,6 +434,7 @@ internal constructor(
       val sortedMarkerTargetPairs = _markerTargets.toList().sortedBy { it.first }
       _markerTargets.clear()
       _markerTargets.putAll(sortedMarkerTargetPairs)
+      markerTargetXValues = sortedMarkerTargetPairs.map { it.first }
       forEachPersistentMarker { marker, targets -> marker.drawUnderLayers(context, targets) }
       val markerTargets =
         getMarkerTargets(markerX, markerSeriesIndex).ifEmpty {
@@ -522,22 +523,15 @@ internal constructor(
     }
   }
 
-  private var cachedMarkerTargetXValues: Pair<Map<Double, *>, List<Double>>? = null
-
   /**
    * Every x a marker could be placed at, for a consumer that chooses its own.
    *
-   * Cached against the target map itself. Keying on its size instead looked equivalent and was not:
-   * targets are rebuilt from the visible points every frame, so a scroll replaces the whole set
-   * while the count stays the same, and the stale list was then served for most of a scroll.
+   * Written where the targets are sorted, because it is that sort. Derived on read instead, it
+   * needed a cache key, and every candidate was wrong: the map is one instance mutated in place,
+   * so identity never changes, and a scroll replaces the whole set while the count stays the same.
    */
-  internal val allMarkerTargetXValues: List<Double>
-    get() {
-      cachedMarkerTargetXValues?.let { (map, values) -> if (map === _markerTargets) return values }
-      val values = _markerTargets.keys.sorted()
-      cachedMarkerTargetXValues = _markerTargets to values
-      return values
-    }
+  internal var markerTargetXValues: List<Double> = emptyList()
+    private set
 
   private fun synthesizeInterpolatedTargets(
     context: CartesianDrawingContext,
