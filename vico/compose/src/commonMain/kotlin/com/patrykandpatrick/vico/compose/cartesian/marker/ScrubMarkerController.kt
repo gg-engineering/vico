@@ -60,8 +60,6 @@ public class ScrubMarkerController(
   public var isScrubbing: Boolean by mutableStateOf(false)
     internal set
 
-  /** Last accepted targets — used for tap toggle detection. */
-  private var lastTargets: List<CartesianMarker.Target>? = null
 
   /**
    * Tracks if marker was showing (for shouldShowMarker logic). Set externally by
@@ -97,19 +95,16 @@ public class ScrubMarkerController(
     when (interaction) {
       is Interaction.Tap -> {
         // Always show/move marker on tap (v3 parity). Dismiss only on scroll.
-        lastTargets = targets
         hasActiveMarker = true
         true
       }
       is Interaction.LongPress -> {
-        lastTargets = targets
         hasActiveMarker = true
         isScrubbing = true
         true
       }
       is Interaction.Move -> {
         if (isScrubbing && targets.isNotEmpty()) {
-          lastTargets = targets
           true
         } else {
           hasActiveMarker
@@ -125,7 +120,6 @@ public class ScrubMarkerController(
   /** Resets internal state on dismiss. Idempotent — safe to call multiple times. */
   internal fun onDismiss() {
     if (!hasActiveMarker && !isScrubbing) return // already dismissed
-    lastTargets = null
     isScrubbing = false
     hasActiveMarker = false
     onMarkerIndexChanged?.invoke(null, emptyList(), null)

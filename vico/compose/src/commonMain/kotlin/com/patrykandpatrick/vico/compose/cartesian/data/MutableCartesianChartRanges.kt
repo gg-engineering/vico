@@ -40,16 +40,6 @@ public class MutableCartesianChartRanges : CartesianChartRanges {
   override fun getYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
     yRanges[axisPosition] ?: yRanges[null] ?: NeutralYRange
 
-  /**
-   * Widens the _x_ range only, for a layer whose _y_ values do not belong to the axis it draws
-   * against — one that transforms them into another layer's range at draw time. Such a layer still
-   * decides how far the chart reaches in time; its raw values would otherwise be unioned into a
-   * range nothing is ever drawn in.
-   */
-  public fun tryUpdateX(minX: Double, maxX: Double) {
-    _minX = _minX?.coerceAtMost(minX) ?: minX
-    _maxX = _maxX?.coerceAtLeast(maxX) ?: maxX
-  }
 
   /**
    * Tries to update the stored values. A minimum value can only be decreased. A maximum value can

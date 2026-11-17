@@ -608,8 +608,6 @@ private const val RANGE_EPSILON = 0.01f
 private fun ScrollAwareRangeEffect(
   chart: CartesianChart,
   model: CartesianChartModel,
-  flingBehavior: FlingBehavior? = null,
-  initialMarkerX: Double? = null,
   onAnimatedRange: (minY: Double, maxY: Double) -> Unit,
   onTargetRange: (minY: Double, maxY: Double) -> Unit = { _, _ -> },
 ) {
@@ -704,13 +702,6 @@ private fun ScrollAwareRangeEffect(
             val (range, newTicks) = result
             val targetMinY = range.start.toFloat()
             val targetMaxY = range.endInclusive.toFloat()
-
-            // Announced before the no-movement check below, not after it. A layer that transforms
-            // its series against the window has to recompute on every settle, including the ones
-            // that leave the y range exactly where it was — scrolling between two windows that
-            // happen to share an axis is precisely when it would otherwise keep a scaling that
-            // belonged to the window the user has left.
-            provider.settleEpoch++
 
             if (
               abs(targetMinY - animMinY.value) < RANGE_EPSILON &&

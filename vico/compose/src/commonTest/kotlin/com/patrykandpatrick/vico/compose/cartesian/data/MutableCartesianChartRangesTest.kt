@@ -25,33 +25,6 @@ class MutableCartesianChartRangesTest {
   private val end = Axis.Position.Vertical.End
 
   @Test
-  fun tryUpdateXWidensTheDomainWithoutTouchingTheAxis() {
-    val ranges = MutableCartesianChartRanges()
-    ranges.tryUpdate(minX = 10.0, maxX = 20.0, minY = 150.0, maxY = 190.0, axisPosition = end)
-
-    // What a layer drawing a second metric in the primary's range contributes: it reaches further
-    // in time, and says nothing about the axis the primary owns.
-    ranges.tryUpdateX(minX = 5.0, maxX = 25.0)
-
-    assertEquals(5.0, ranges.minX)
-    assertEquals(25.0, ranges.maxX)
-    assertEquals(150.0, ranges.getYRange(end).minY)
-    assertEquals(190.0, ranges.getYRange(end).maxY)
-  }
-
-  @Test
-  fun tryUpdateWouldHaveWidenedTheAxisToCoverTheOtherMetric() {
-    // The behaviour `tryUpdateX` exists to avoid, pinned so the difference stays visible: a pulse
-    // of 60..90 unioned into a weight axis of 150..190 opens it at zero, because the auto range
-    // provider coerces a minimum to at most zero and the union only ever widens.
-    val ranges = MutableCartesianChartRanges()
-    ranges.tryUpdate(minX = 10.0, maxX = 20.0, minY = 150.0, maxY = 190.0, axisPosition = end)
-    ranges.tryUpdate(minX = 10.0, maxX = 20.0, minY = 0.0, maxY = 90.0, axisPosition = end)
-
-    assertEquals(0.0, ranges.getYRange(end).minY)
-  }
-
-  @Test
   fun anAxisNoLayerClaimedFallsBackToTheChartWideRange() {
     val ranges = MutableCartesianChartRanges()
     ranges.tryUpdate(minX = 0.0, maxX = 1.0, minY = 2.0, maxY = 8.0, axisPosition = null)
@@ -62,10 +35,9 @@ class MutableCartesianChartRangesTest {
 
   @Test
   fun aChartNoLayerOfferedARangeForIsNeutralRatherThanFatal() {
-    // Reachable once every layer transforms its y values into someone else's range. It used to
-    // throw out of a map lookup.
+    // Reachable once every layer transforms its y values into someone else's range, which
+    // `contributesYRange` makes routine. It used to throw out of a map lookup.
     val ranges = MutableCartesianChartRanges()
-    ranges.tryUpdateX(minX = 0.0, maxX = 1.0)
 
     assertEquals(0.0, ranges.getYRange(end).minY)
     assertEquals(1.0, ranges.getYRange(end).maxY)

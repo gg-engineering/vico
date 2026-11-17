@@ -50,7 +50,7 @@ public class ScrollAwareRangeProvider(
         ClosedRange<Double>,
         List<Double>,
       >,
-) : CartesianLayerRangeProvider, WindowSettleSignal {
+) : CartesianLayerRangeProvider {
 
   /**
    * A chart's bounds, as supplied alongside the data rather than beside it.
@@ -115,14 +115,6 @@ public class ScrollAwareRangeProvider(
   internal var currentMinY: Double = Double.NaN
   internal var currentMaxY: Double = Double.NaN
 
-  // Animation target — the final yRange the animation is heading toward.
-  // Set before animateTo(). Secondary layers read this to recompute immediately.
-  public var targetMinY: Double = Double.NaN
-    internal set
-
-  public var targetMaxY: Double = Double.NaN
-    internal set
-
   // X range override — set during composition via direct property access.
   public var xRangeMin: Double = Double.NaN
   public var xRangeMax: Double = Double.NaN
@@ -147,9 +139,6 @@ public class ScrollAwareRangeProvider(
 
   // Current tick labels — read by ListItemPlacer through [ticks].
   public var currentTicks: List<Double> = emptyList()
-    internal set
-
-  override var settleEpoch: Int = 0
     internal set
 
   /**
