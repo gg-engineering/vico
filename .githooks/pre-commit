@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+# Pre-commit hook
+# 1. Runs Gitleaks on staged files to detect secrets
+# Blocks the commit if a secret is found
+
+set -euo pipefail
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# ============================================
+# STEP 1: Gitleaks — Secrets Detection
+# ============================================
+
+GITLEAKS=$(command -v gitleaks 2>/dev/null || true)
+if [ -z "$GITLEAKS" ]; then
+    echo "⚠️  Gitleaks not found — skipping secrets scan"
+    echo "   Install with: brew install gitleaks"
+else
+    GITLEAKS_CONFIG="$REPO_ROOT/.gitleaks.toml"
+
+    # Get list of staged files (Added, Copied, Modified)
+    STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACM || true)
+    if [ -n "$STAGED_ALL" ]; then
+        echo "Running Gitleaks on staged files..."
+
+        # Write staged file paths to a temp file for scanning
+        TMPDIR_GITLEAKS=$(mktemp -d)
+        trap "rm -rf $TMPDIR_GITLEAKS" EXIT
+
+        # Copy staged file contents to temp dir (preserving directory structure)
+        while IFS= read -r file; do
+            if [ -f "$REPO_ROOT/$file" ]; then
+                mkdir -p "$TMPDIR_GITLEAKS/$(dirname "$file")"
+                # Use git show to get the staged version (not working tree)
+                git show ":$file" > "$TMPDIR_GITLEAKS/$file" 2>/dev/null || true
+            fi
+        done <<< "$STAGED_ALL"
+
+        GITLEAKS_ARGS="dir --no-banner --verbose $TMPDIR_GITLEAKS"
+        if [ -f "$GITLEAKS_CONFIG" ]; then
+            GITLEAKS_ARGS="-c $GITLEAKS_CONFIG dir --no-banner --verbose $TMPDIR_GITLEAKS"
+        fi
+
+        if ! $GITLEAKS $GITLEAKS_ARGS; then
+            echo ""
+            echo "❌ Gitleaks found secrets in staged files. Remove them before committing."
+            echo "   To bypass: git commit --no-verify"
+            exit 1
+        fi
+
+        echo "✅ Gitleaks passed — no secrets detected"
+    fi
+fi
+
+
+exit 0
