@@ -21,8 +21,10 @@ dependencies {
   implementation(libs.androidLibrary)
   implementation(libs.composeCompiler)
   implementation(libs.composeMultiplatform)
+  implementation(libs.detekt)
   implementation(libs.dokka)
   implementation(libs.kotlinAndroid)
   implementation(libs.kotlinMultiplatform)
+  implementation(libs.kover)
   implementation(libs.mavenPublish)
 }

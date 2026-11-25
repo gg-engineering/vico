@@ -10,13 +10,17 @@ composeNavigation = "2.8.0-alpha13"
 composeStableMarker = "1.0.6"
 coroutines = "1.10.2"
 dateTime = "0.6.2"
+detekt = "1.23.8"
 dokka = "2.0.0"
 jupiter = "5.13.1"
+junit4 = "4.13.2"
 kotlin = "2.1.21"
+kover = "0.9.1"
 material = "1.12.0"
 materialIcons = "1.7.3"
 mavenPublish = "0.32.0"
 mockK = "1.14.2"
+robolectric = "4.14.1"
 testCore = "1.6.1"
 
 [libraries]
@@ -36,12 +40,18 @@ composeNavigation = { group = "org.jetbrains.androidx.navigation", name = "navig
 composePreview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 composeStableMarker = { group = "com.github.skydoves", name = "compose-stable-marker", version.ref = "composeStableMarker" }
 composeUI = { group = "androidx.compose.ui", name = "ui" }
+composeUITest = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+composeUITestManifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 composeUITooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 composeViewBinding = { group = "androidx.compose.ui", name = "ui-viewbinding" }
 coroutinesCore = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+detekt = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
 dokka = { group = "org.jetbrains.dokka", name = "dokka-gradle-plugin", version.ref = "dokka" }
 jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jupiter" }
 jupiterParams = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "jupiter" }
+jupiterVintage = { module = "org.junit.vintage:junit-vintage-engine", version.ref = "jupiter" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
+kover = { group = "org.jetbrains.kotlinx", name = "kover-gradle-plugin", version.ref = "kover" }
 kotlinAndroid = { group = "org.jetbrains.kotlin.android", name = "org.jetbrains.kotlin.android.gradle.plugin", version.ref = "kotlin" }
 kotlinMultiplatform = { group = "org.jetbrains.kotlin.multiplatform", name = "org.jetbrains.kotlin.multiplatform.gradle.plugin", version.ref = "kotlin" }
 kotlinStdLib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
@@ -51,4 +61,5 @@ material = { group = "com.google.android.material", name = "material", version.r
 materialIcons = { group = "org.jetbrains.compose.material", name = "material-icons-core", version.ref = "materialIcons" }
 mavenPublish = { group = "com.vanniktech.maven.publish", name = "com.vanniktech.maven.publish.gradle.plugin", version.ref = "mavenPublish" }
 mockK = { group = "io.mockk", name = "mockk", version.ref = "mockK" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 testCore = { group = "androidx.test", name = "core-ktx", version.ref = "testCore" }

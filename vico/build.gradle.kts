@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-plugins { `dokka-convention` }
+plugins {
+  `dokka-convention`
+  id("org.jetbrains.kotlinx.kover")
+}
 
 subprojects {
   group = "com.patrykandpatrick.vico"
@@ -28,6 +31,16 @@ dependencies {
   dokka(project(":vico:core"))
   dokka(project(":vico:multiplatform"))
   dokka(project(":vico:views"))
+  kover(project(":vico:compose"))
+  kover(project(":vico:core"))
 }
 
 dokka { pluginsConfiguration.html { customStyleSheets.from("$rootDir/logo-styles.css") } }
+
+kover {
+  currentProject { createVariant("coverage") {} }
+  reports {
+    filters { excludes { classes("*ComposableSingletons*") } }
+    variant("coverage") { verify { rule { minBound(80) } } }
+  }
+}

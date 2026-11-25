@@ -19,6 +19,7 @@ plugins {
   id("com.android.library")
   id("kotlin-android")
   `dokka-convention`
+  `quality-convention`
 }
 
 android {

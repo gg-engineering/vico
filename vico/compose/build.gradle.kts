@@ -20,12 +20,14 @@ plugins {
   id("kotlin-android")
   id("org.jetbrains.kotlin.plugin.compose")
   `dokka-convention`
+  `quality-convention`
 }
 
 android {
   configure()
   kotlinOptions { jvmTarget = JavaVersion.VERSION_1_8.toString() }
   namespace = moduleNamespace
+  testOptions.unitTests.isIncludeAndroidResources = true
 }
 
 kotlin { explicitApi() }
@@ -40,5 +42,11 @@ dependencies {
   implementation(libs.composeUI)
   implementation(libs.kotlinStdLib)
   implementation(platform(libs.composeBom))
+  testImplementation(libs.composeUITest)
+  testImplementation(libs.composeUITestManifest)
+  testImplementation(libs.junit4)
   testImplementation(libs.kotlinTest)
+  testImplementation(libs.robolectric)
+  testImplementation(platform(libs.composeBom))
+  testRuntimeOnly(libs.jupiterVintage)
 }
