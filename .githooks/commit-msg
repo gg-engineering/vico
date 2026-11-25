@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# Commit-msg hook: Validate that commit message includes a JIRA ticket reference
+# Pattern: MOB-XXXX (or legacy MA-XXXX) — project prefix + ticket number
+
+set -euo pipefail
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits
+if echo "$COMMIT_MSG" | head -1 | grep -qE "^Merge "; then
+    exit 0
+fi
+
+# Skip fixup/squash commits (used in interactive rebase)
+if echo "$COMMIT_MSG" | head -1 | grep -qE "^(fixup|squash)! "; then
+    exit 0
+fi
+
+# Skip revert commits
+if echo "$COMMIT_MSG" | head -1 | grep -qE "^Revert "; then
+    exit 0
+fi
+
+# Check for JIRA ticket reference (MOB-XXXX or legacy MA-XXXX)
+if ! echo "$COMMIT_MSG" | grep -qE "(MA|MOB)-[0-9]+"; then
+    echo ""
+    echo "❌ Commit message must include a JIRA ticket reference (e.g. MOB-1234)"
+    echo ""
+    echo "   Your message: $(head -1 "$COMMIT_MSG_FILE")"
+    echo ""
+    echo "   Examples:"
+    echo "     MOB-3428 Add git hooks for lint and commit validation"
+    echo "     Fix login crash (MOB-1234)"
+    echo ""
+    echo "   To bypass: git commit --no-verify"
+    exit 1
+fi
+
+exit 0
