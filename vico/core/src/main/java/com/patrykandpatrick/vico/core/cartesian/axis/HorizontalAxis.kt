@@ -281,7 +281,7 @@ protected constructor(
       else -> 0f
     } * layoutDirectionMultiplier
 
-  override fun drawOverLayers(context: CartesianDrawingContext) {}
+  override fun drawOverLayers(context: CartesianDrawingContext): Unit = Unit
 
   override fun updateLayerDimensions(
     context: CartesianMeasuringContext,

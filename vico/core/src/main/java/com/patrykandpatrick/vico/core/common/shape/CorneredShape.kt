@@ -207,10 +207,14 @@ public open class CorneredShape(
       treatment: CornerTreatment,
     ) : Corner(treatment) {
       init {
-        require(sizePercent in 0..100) { "`sizePercent` must be in [0, 100]." }
+        require(sizePercent in 0..MAX_PERCENT) { "`sizePercent` must be in [0, 100]." }
       }
 
-      override fun getSize(max: Float, density: Float) = max / 100 * sizePercent
+      override fun getSize(max: Float, density: Float) = max / MAX_PERCENT * sizePercent
+
+      private companion object {
+        const val MAX_PERCENT = 100
+      }
     }
 
     /** Houses [Corner] singletons. */

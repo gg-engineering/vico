@@ -64,4 +64,16 @@ private fun Int.extractColorChannel(bitShift: Int): Int = this shr bitShift and 
 
 internal val Long.alpha: Float
   get() =
-    if (this and 0x3fL == 0L) (this shr 56 and 0xff) / 255.0f else (this shr 6 and 0x3ff) / 1023.0f
+    if (this and COLOR_SPACE_MASK == 0L) {
+      (this shr SRGB_ALPHA_SHIFT and SRGB_ALPHA_MASK) / SRGB_ALPHA_MAX
+    } else {
+      (this shr ALPHA_SHIFT and ALPHA_MASK) / ALPHA_MAX
+    }
+
+private const val COLOR_SPACE_MASK = 0x3fL
+private const val SRGB_ALPHA_SHIFT = 56
+private const val SRGB_ALPHA_MASK = 0xffL
+private const val SRGB_ALPHA_MAX = 255.0f
+private const val ALPHA_SHIFT = 6
+private const val ALPHA_MASK = 0x3ffL
+private const val ALPHA_MAX = 1023.0f

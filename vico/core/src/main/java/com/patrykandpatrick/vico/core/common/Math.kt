@@ -95,7 +95,7 @@ internal inline val Int?.orZero: Int
 internal inline val Double.roundedToNearest: Double
   get() {
     val absoluteValue = abs(this)
-    return sign * if (absoluteValue % 1 >= 0.5) ceil(absoluteValue) else floor(absoluteValue)
+    return sign * if (absoluteValue % 1 >= HALF) ceil(absoluteValue) else floor(absoluteValue)
   }
 
 internal inline val Float.piRad: Float
@@ -115,3 +115,5 @@ public fun Float.rangeWith(other: Float): ClosedFloatingPointRange<Float> =
   if (other > this) this..other else other..this
 
 internal fun Float.lerp(to: Float, fraction: Float): Float = this + (to - this) * fraction
+
+private const val HALF = 0.5

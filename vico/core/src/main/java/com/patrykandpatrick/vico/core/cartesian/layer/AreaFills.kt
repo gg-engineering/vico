@@ -21,13 +21,10 @@ import android.graphics.Path
 import android.graphics.RectF
 import com.patrykandpatrick.vico.core.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.core.cartesian.axis.Axis
-import com.patrykandpatrick.vico.core.common.DefaultAlpha
 import com.patrykandpatrick.vico.core.common.Fill
-import com.patrykandpatrick.vico.core.common.copyColor
 import com.patrykandpatrick.vico.core.common.data.ExtraStore
 import com.patrykandpatrick.vico.core.common.getEnd
 import com.patrykandpatrick.vico.core.common.getStart
-import com.patrykandpatrick.vico.core.common.shader.ShaderProvider
 import com.patrykandpatrick.vico.core.common.shader.getShader
 
 internal abstract class BaseAreaFill(open val splitY: (ExtraStore) -> Number) :
@@ -146,26 +143,3 @@ internal data class DoubleAreaFill(
     }
   }
 }
-
-private fun LineCartesianLayer.AreaFill.Companion.default(
-  topColor: Int,
-  bottomColor: Int,
-  splitY: (ExtraStore) -> Number = { 0 },
-) =
-  double(
-    topFill =
-      Fill(
-        ShaderProvider.verticalGradient(
-          topColor.copyColor(DefaultAlpha.LINE_BACKGROUND_SHADER_START),
-          topColor.copyColor(DefaultAlpha.LINE_BACKGROUND_SHADER_END),
-        )
-      ),
-    bottomFill =
-      Fill(
-        ShaderProvider.verticalGradient(
-          bottomColor.copyColor(DefaultAlpha.LINE_BACKGROUND_SHADER_END),
-          bottomColor.copyColor(DefaultAlpha.LINE_BACKGROUND_SHADER_START),
-        )
-      ),
-    splitY = splitY,
-  )

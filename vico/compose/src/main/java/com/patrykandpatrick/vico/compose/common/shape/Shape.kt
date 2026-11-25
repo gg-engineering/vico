@@ -48,14 +48,15 @@ private fun Path.addRoundRect(
   rect: RoundRect,
   radii: FloatArray,
 ) {
-  radii[0] = rect.topLeftCornerRadius.x
-  radii[1] = rect.topLeftCornerRadius.y
-  radii[2] = rect.topRightCornerRadius.x
-  radii[3] = rect.topRightCornerRadius.y
-  radii[4] = rect.bottomRightCornerRadius.x
-  radii[5] = rect.bottomRightCornerRadius.y
-  radii[6] = rect.bottomLeftCornerRadius.x
-  radii[7] = rect.bottomLeftCornerRadius.y
+  var index = 0
+  radii[index++] = rect.topLeftCornerRadius.x
+  radii[index++] = rect.topLeftCornerRadius.y
+  radii[index++] = rect.topRightCornerRadius.x
+  radii[index++] = rect.topRightCornerRadius.y
+  radii[index++] = rect.bottomRightCornerRadius.x
+  radii[index++] = rect.bottomRightCornerRadius.y
+  radii[index++] = rect.bottomLeftCornerRadius.x
+  radii[index++] = rect.bottomLeftCornerRadius.y
   addRoundRect(left, top, right, bottom, radii, Path.Direction.CCW)
 }
 

@@ -26,10 +26,23 @@ import kotlin.random.Random
 /** @suppress */
 @RestrictTo(RestrictTo.Scope.LIBRARY_GROUP)
 public object RandomCartesianModelGenerator {
-  public val defaultX: IntProgression = 0..96
-  public val defaultY: ClosedFloatingPointRange<Double> = 2.0..20.0
-  public val defaultOpeningClosingRange: ClosedFloatingPointRange<Double> = 5.0..15.0
-  public val defaultLowHighRange: ClosedFloatingPointRange<Double> = 0.5..5.0
+  private const val DEFAULT_MAX_X = 96
+  private const val DEFAULT_MIN_Y = 2.0
+  private const val DEFAULT_MAX_Y = 20.0
+  private const val DEFAULT_MIN_OPENING_CLOSING = 5.0
+  private const val DEFAULT_MAX_OPENING_CLOSING = 15.0
+  private const val DEFAULT_MIN_LOW_HIGH = 0.5
+  private const val DEFAULT_MAX_LOW_HIGH = 5.0
+  private const val MAX_OPENING_PRICE_DELTA_RATIO = 0.2
+  private const val CHANGE_OVERRIDE_THRESHOLD_RATIO = 0.2
+  private const val MAX_CLOSING_PRICE_DELTA_RATIO = 0.8
+
+  public val defaultX: IntProgression = 0..DEFAULT_MAX_X
+  public val defaultY: ClosedFloatingPointRange<Double> = DEFAULT_MIN_Y..DEFAULT_MAX_Y
+  public val defaultOpeningClosingRange: ClosedFloatingPointRange<Double> =
+    DEFAULT_MIN_OPENING_CLOSING..DEFAULT_MAX_OPENING_CLOSING
+  public val defaultLowHighRange: ClosedFloatingPointRange<Double> =
+    DEFAULT_MIN_LOW_HIGH..DEFAULT_MAX_LOW_HIGH
 
   public fun getRandomColumnLayerModelPartial(
     seriesCount: Int = 1,
@@ -59,10 +72,10 @@ public object RandomCartesianModelGenerator {
     val closing = mutableListOf<Double>()
     val low = mutableListOf<Double>()
     val high = mutableListOf<Double>()
-    val maxOpeningPriceDelta = 0.2 * openingClosingRange.length
-    val changeOverrideThreshold = 0.2 * openingClosingRange.length
-    val maxClosingPriceDelta = 0.8 * openingClosingRange.length
-    for (i in x) {
+    val maxOpeningPriceDelta = MAX_OPENING_PRICE_DELTA_RATIO * openingClosingRange.length
+    val changeOverrideThreshold = CHANGE_OVERRIDE_THRESHOLD_RATIO * openingClosingRange.length
+    val maxClosingPriceDelta = MAX_CLOSING_PRICE_DELTA_RATIO * openingClosingRange.length
+    repeat(x.count()) {
       val openingPrice =
         if (previousClosingPrice != null) {
           previousClosingPrice +

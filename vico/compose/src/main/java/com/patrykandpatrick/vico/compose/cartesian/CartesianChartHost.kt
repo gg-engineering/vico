@@ -88,7 +88,8 @@ public fun CartesianChartHost(
 ) {
   val mutableRanges = remember { MutableCartesianChartRanges() }
   val modelWrapper by modelProducer.collectAsState(chart, animationSpec, animateIn, mutableRanges)
-  val (model, previousModel, ranges, extraStore) = modelWrapper
+  val (model, previousModel, ranges) = modelWrapper
+  val extraStore = modelWrapper.extraStore
 
   CartesianChartHostBox(modifier) {
     if (model != null) {

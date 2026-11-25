@@ -190,7 +190,7 @@ public class VicoScrollState {
   }
 
   internal companion object {
-    fun Saver(
+    fun saver(
       scrollEnabled: Boolean,
       initialScroll: Scroll.Absolute,
       autoScroll: Scroll,
@@ -231,7 +231,7 @@ public fun rememberVicoScrollState(
     autoScrollAnimationSpec,
     saver =
       remember(scrollEnabled, initialScroll, autoScrollCondition, autoScrollAnimationSpec) {
-        VicoScrollState.Saver(
+        VicoScrollState.saver(
           scrollEnabled,
           initialScroll,
           autoScroll,

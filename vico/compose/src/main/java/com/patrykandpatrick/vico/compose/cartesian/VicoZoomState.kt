@@ -154,7 +154,7 @@ public class VicoZoomState {
   }
 
   internal companion object {
-    fun Saver(zoomEnabled: Boolean, initialZoom: Zoom, minZoom: Zoom, maxZoom: Zoom) =
+    fun saver(zoomEnabled: Boolean, initialZoom: Zoom, minZoom: Zoom, maxZoom: Zoom) =
       Saver<VicoZoomState, Pair<Float, Boolean>>(
         save = { it.value to it.overridden },
         restore = { (value, overridden) ->
@@ -179,7 +179,7 @@ public fun rememberVicoZoomState(
     maxZoom,
     saver =
       remember(zoomEnabled, initialZoom, minZoom, maxZoom) {
-        VicoZoomState.Saver(zoomEnabled, initialZoom, minZoom, maxZoom)
+        VicoZoomState.saver(zoomEnabled, initialZoom, minZoom, maxZoom)
       },
   ) {
     VicoZoomState(zoomEnabled, initialZoom, minZoom, maxZoom)

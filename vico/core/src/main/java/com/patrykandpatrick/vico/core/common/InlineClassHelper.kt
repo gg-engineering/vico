@@ -21,21 +21,24 @@ package com.patrykandpatrick.vico.core.common
 internal inline fun packFloats(val1: Float, val2: Float): Long {
   val v1 = val1.toBits().toLong()
   val v2 = val2.toBits().toLong()
-  return v1.shl(32) or (v2 and 0xFFFFFFFF)
+  return v1.shl(INT_BITS) or (v2 and LOWER_32_BITS)
 }
 
 /** Unpacks the first [Float] value in [packFloats] from its returned [Long]. */
-internal inline fun unpackFloat1(value: Long) = Float.fromBits(value.shr(32).toInt())
+internal inline fun unpackFloat1(value: Long) = Float.fromBits(value.shr(INT_BITS).toInt())
 
 /** Unpacks the second [Float] value in [packFloats] from its returned [Long]. */
-internal inline fun unpackFloat2(value: Long) = Float.fromBits(value.and(0xFFFFFFFF).toInt())
+internal inline fun unpackFloat2(value: Long) = Float.fromBits(value.and(LOWER_32_BITS).toInt())
 
 /** Packs two [Int] values into one [Long] value for use in inline classes. */
 internal inline fun packInts(val1: Int, val2: Int) =
-  val1.toLong().shl(32) or (val2.toLong() and 0xFFFFFFFF)
+  val1.toLong().shl(INT_BITS) or (val2.toLong() and LOWER_32_BITS)
 
 /** Unpacks the first [Int] value in [packInts] from its returned [ULong]. */
-internal inline fun unpackInt1(value: Long) = value.shr(32).toInt()
+internal inline fun unpackInt1(value: Long) = value.shr(INT_BITS).toInt()
 
 /** Unpacks the second [Int] value in [packInts] from its returned [ULong]. */
-internal inline fun unpackInt2(value: Long) = value.and(0xFFFFFFFF).toInt()
+internal inline fun unpackInt2(value: Long) = value.and(LOWER_32_BITS).toInt()
+
+private const val INT_BITS = 32
+private const val LOWER_32_BITS = 0xFFFFFFFF
