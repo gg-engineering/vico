@@ -1,0 +1,121 @@
+version: 2.1
+
+executors:
+  android:
+    docker:
+      - image: cimg/android:2026.10.1
+    resource_class: large
+    environment:
+      GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+commands:
+  restore_gradle:
+    steps:
+      - restore_cache:
+          keys:
+            - gradle-v1-{{ checksum "gradle/libs.versions.toml" }}-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}
+            - gradle-v1-
+  save_gradle:
+    steps:
+      - save_cache:
+          key: gradle-v1-{{ checksum "gradle/libs.versions.toml" }}-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}
+          paths:
+            - ~/.gradle/caches
+            - ~/.gradle/wrapper
+            - ~/.m2/repository/org/robolectric
+
+jobs:
+  build:
+    executor: android
+    steps:
+      - checkout
+      - restore_gradle
+      - run:
+          name: Build
+          command: ./gradlew build -x lint -x test
+      - run:
+          name: Rename the sample APK
+          command: mv sample/app/build/outputs/apk/debug/app-debug.apk sample/app/build/outputs/apk/debug/android-sample-debug.apk
+      - store_artifacts:
+          path: sample/app/build/outputs/apk/debug/android-sample-debug.apk
+          destination: android-sample-debug.apk
+      - save_gradle
+
+  test:
+    executor: android
+    steps:
+      - checkout
+      - restore_gradle
+      - run:
+          name: Unit tests
+          command: ./gradlew test
+      - store_test_results:
+          path: vico/compose/build/test-results
+      - store_test_results:
+          path: vico/core/build/test-results
+      - save_gradle
+
+  coverage:
+    executor: android
+    steps:
+      - checkout
+      - restore_gradle
+      - run:
+          name: Coverage report for vico/core + vico/compose
+          command: ./gradlew :vico:koverXmlReportCoverage :vico:koverHtmlReportCoverage :vico:koverLogCoverage
+      - store_artifacts:
+          path: vico/build/reports/kover
+          destination: coverage
+      - run:
+          name: Coverage gate
+          command: ./gradlew :vico:koverVerifyCoverage
+
+  lint:
+    executor: android
+    steps:
+      - checkout
+      - restore_gradle
+      - run:
+          name: detekt + Android lint on vico/core and vico/compose
+          command: ./gradlew :vico:core:detekt :vico:compose:detekt :vico:core:lintDebug :vico:compose:lintDebug
+      - store_artifacts:
+          path: vico/core/build/reports
+          destination: lint/core
+      - store_artifacts:
+          path: vico/compose/build/reports
+          destination: lint/compose
+
+  check-formatting:
+    docker:
+      - image: cimg/openjdk:21.0
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: ktfmt --google-style
+          command: |
+            curl -sSL -o /tmp/ktfmt.jar https://github.com/facebook/ktfmt/releases/download/v0.55/ktfmt-0.55-with-dependencies.jar
+            java -jar /tmp/ktfmt.jar --dry-run --google-style --set-exit-if-changed .
+
+  scan:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: gitleaks
+          command: |
+            curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C /tmp gitleaks
+            # HEAD only: older feature/version branches carry a token in history that is tracked separately.
+            /tmp/gitleaks git --redact -v --exit-code 1 --log-opts="HEAD" .
+
+workflows:
+  checks:
+    jobs:
+      - build
+      - test
+      - coverage
+      - lint
+      - check-formatting
+      - scan

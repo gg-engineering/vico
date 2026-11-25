@@ -35,3 +35,33 @@ Run once after cloning to enable the secret-scan and commit-message hooks:
 ```bash
 git config core.hooksPath .githooks
 ```
+
+## Quality checks
+
+CircleCI (`.circleci/config.yml`) runs these jobs: `build`, `test`, `check-formatting`, `scan`,
+`lint` and `coverage`. Run the same checks locally with JDK 17:
+
+```bash
+# Lint: detekt + Android lint on vico/core and vico/compose
+./gradlew :vico:core:detekt :vico:compose:detekt :vico:core:lintDebug :vico:compose:lintDebug
+
+# Unit tests + coverage report (vico/build/reports/kover)
+./gradlew test :vico:koverHtmlReportCoverage :vico:koverLogCoverage
+
+# Formatting (ktfmt 0.55)
+java -jar ktfmt-0.55-with-dependencies.jar --dry-run --google-style --set-exit-if-changed .
+```
+
+**Coverage scope:** `vico/core` + `vico/compose`. These modules are excluded because meApp does
+not use them: `vico/views`, `vico/compose-m2`, `vico/compose-m3`, `vico/multiplatform`,
+`vico/multiplatform-m2`, `vico/multiplatform-m3` and the `sample` apps. Inside the scope, the
+Compose compiler's generated `ComposableSingletons` classes are excluded (generated code).
+
+**detekt rules turned off**, because satisfying them means restructuring upstream Vico code or
+changing its public API, which this fork avoids so upstream merges stay cheap:
+
+| Rule | Why it is off |
+|---|---|
+| `LongParameterList` | Public constructors and `remember*` functions take every option as a parameter; changing them breaks the API meApp calls. |
+| `TooManyFunctions` | Flags public API classes (`CartesianChart`, the axes, the layers). Splitting them changes the API. |
+| `LongMethod`, `CyclomaticComplexMethod`, `ComplexCondition`, `NestedBlockDepth`, `ReturnCount`, `LoopWithTooManyJumpStatements` | Flag upstream drawing and label-placement algorithms. Splitting them is a behaviour risk with no test benefit, and every split is a merge conflict on the next upstream sync. |
