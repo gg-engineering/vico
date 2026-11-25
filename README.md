@@ -17,7 +17,7 @@ This is Greater Goods' fork of [patrykandpatrick/vico](https://github.com/patryk
 used for the charts in meApp (Weight Gurus) Android.
 
 - **Where our changes live:** the `version-X.Y.Z` / release branches (for example `version-3.0.0`,
-  `version-4.0.0`, `5.0.2`), not `master`. `master` tracks upstream plus repo housekeeping files.
+  `version-4.0.0`, `5.0.2`), not `master`. `master` tracks upstream; `develop` (branched from `master`) is where repo housekeeping PRs land.
 - **Publishing:** each library module is published by hand from its branch to GitHub Packages as
   `com.dmdbrands.lib:vico-*` (for example `vico-core`, `vico-compose`, `vico-compose-m3`), using the
   `publishGprPublicationToGitHubPackagesRepository` Gradle task with a `gpr.user` / `gpr.token`
