@@ -87,6 +87,7 @@ class ScrollZoomFlowTest {
 
   private fun onMain(block: suspend () -> Unit) {
     composeRule.runOnIdle { scope.launch { block() } }
+    composeRule.mainClock.advanceTimeByFrame()
     composeRule.drawChart()
   }
 

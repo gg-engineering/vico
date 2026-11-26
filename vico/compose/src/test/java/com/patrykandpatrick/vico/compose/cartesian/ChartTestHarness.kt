@@ -3,6 +3,7 @@ package com.patrykandpatrick.vico.compose.cartesian
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.patrykandpatrick.vico.core.cartesian.CartesianDrawingContext
@@ -18,12 +19,19 @@ import com.patrykandpatrick.vico.core.common.component.Component
 import com.patrykandpatrick.vico.core.common.component.LineComponent
 import com.patrykandpatrick.vico.core.common.component.ShapeComponent
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.test.StandardTestDispatcher
 
 internal typealias ChartRule = AndroidComposeTestRule<*, ComponentActivity>
 
-internal fun createChartRule(): ChartRule = createAndroidComposeRule<ComponentActivity>()
+/**
+ * Effects run on a queued dispatcher: `CartesianChartHost` registers with the producer from an
+ * effect, and an immediate dispatcher lets that registration race its own disposal.
+ */
+@OptIn(ExperimentalTestApi::class)
+internal fun createChartRule(): ChartRule =
+  createAndroidComposeRule(ComponentActivity::class.java, StandardTestDispatcher())
 
-private const val TIMEOUT_MS = 30_000L
+private const val TIMEOUT_MS = 10_000L
 
 /** Robolectric does not run draw passes on its own, so the window is drawn into a bitmap. */
 internal fun ChartRule.drawChart() {

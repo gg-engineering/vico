@@ -127,7 +127,7 @@ class DataToChartFlowTest {
 
     push {}
 
-    composeRule.waitUntil(20_000L) {
+    composeRule.waitUntil(10_000L) {
       composeRule.onAllNodesWithText(PLACEHOLDER).fetchSemanticsNodes().size == 1
     }
     composeRule.onNodeWithText(PLACEHOLDER).assertExists()
