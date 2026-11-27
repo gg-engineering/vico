@@ -73,6 +73,14 @@ internal fun ChartRule.awaitFrame(
   return recorder.last!!
 }
 
+internal fun ChartRule.settle(recorder: FrameRecorder, frames: Int = 60): DrawnFrame {
+  repeat(frames) {
+    mainClock.advanceTimeByFrame()
+    drawChart()
+  }
+  return awaitFrame(recorder)
+}
+
 internal data class DrawnFrame(
   val minX: Double,
   val maxX: Double,
@@ -86,6 +94,7 @@ internal data class DrawnFrame(
   val xSpacing: Float,
   val scroll: Float,
   val zoom: Float,
+  val markerX: Double?,
 )
 
 internal class FrameRecorder : Decoration {
@@ -111,6 +120,7 @@ internal class FrameRecorder : Decoration {
           xSpacing = layerDimensions.xSpacing,
           scroll = scroll,
           zoom = zoom,
+          markerX = markerX,
         )
     }
   }
