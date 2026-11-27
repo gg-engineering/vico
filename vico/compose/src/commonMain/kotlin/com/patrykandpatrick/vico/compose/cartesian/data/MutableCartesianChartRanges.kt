@@ -40,7 +40,6 @@ public class MutableCartesianChartRanges : CartesianChartRanges {
   override fun getYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =
     yRanges[axisPosition] ?: yRanges[null] ?: NeutralYRange
 
-
   /**
    * Tries to update the stored values. A minimum value can only be decreased. A maximum value can
    * only be increased.

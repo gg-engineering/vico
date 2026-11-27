@@ -140,9 +140,8 @@ internal fun Modifier.pointerInput(
                 currentOnInteraction?.invoke(Interaction.Enter(pointerPosition)) ?: false
               event.type == PointerEventType.Exit -> {
                 val isInsideChartBounds = position.fits(size)
-                currentOnInteraction?.invoke(
-                  Interaction.Exit(pointerPosition, isInsideChartBounds)
-                ) ?: false
+                currentOnInteraction?.invoke(Interaction.Exit(pointerPosition, isInsideChartBounds))
+                  ?: false
               }
               else -> false
             }

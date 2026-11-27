@@ -262,7 +262,6 @@ public class VicoScrollState {
     return results
   }
 
-
   private inline fun withUpdated(
     block: (CartesianMeasuringContext, CartesianLayerDimensions, Rect) -> Unit
   ) {

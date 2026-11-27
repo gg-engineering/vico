@@ -60,7 +60,6 @@ public class ScrubMarkerController(
   public var isScrubbing: Boolean by mutableStateOf(false)
     internal set
 
-
   /**
    * Tracks if marker was showing (for shouldShowMarker logic). Set externally by
    * CartesianChartHostImpl.
@@ -155,7 +154,8 @@ public fun rememberScrubMarkerController(
     ScrubMarkerController(
       delayMs,
       if (!hasCallback) null
-      else { clickX, targets, interaction -> callbackRef.value?.invoke(clickX, targets, interaction) },
+      else
+        { clickX, targets, interaction -> callbackRef.value?.invoke(clickX, targets, interaction) },
     )
   }
 }

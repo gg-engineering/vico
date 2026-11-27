@@ -43,7 +43,10 @@ import kotlin.math.abs
 public data class SnapBehaviorConfig(
   val snapToLabel:
     ((
-      currentXLabel: Double?, projectedXLabel: Double?, isDrag: Boolean, isForward: Boolean,
+      currentXLabel: Double?,
+      projectedXLabel: Double?,
+      isDrag: Boolean,
+      isForward: Boolean,
     ) -> Double)? =
     null,
   val animation: SnapAnimation = SnapAnimation(),

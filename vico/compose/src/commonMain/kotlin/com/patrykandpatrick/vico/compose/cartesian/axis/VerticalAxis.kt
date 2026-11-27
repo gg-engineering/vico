@@ -387,8 +387,10 @@ protected constructor(
     with(context) {
       val topExtension = if (itemPlacer.getShiftTopLines(this)) tickThickness else 0f
       val bottomExtension = tickThickness
-      // A scrolling axis's line rides the chart's edge, which travels well past the plot. Unclipped,
-      // the end line stayed on screen wherever the scroll left it, marking an end that was not there.
+      // A scrolling axis's line rides the chart's edge, which travels well past the plot.
+      // Unclipped,
+      // the end line stayed on screen wherever the scroll left it, marking an end that was not
+      // there.
       val clipsToLayer = size is Size.Scroll
       if (clipsToLayer) {
         canvas.save()

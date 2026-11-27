@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
   `dokka-convention`

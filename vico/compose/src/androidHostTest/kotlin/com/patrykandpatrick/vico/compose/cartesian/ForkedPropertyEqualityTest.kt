@@ -20,8 +20,8 @@ import android.graphics.BlendMode
 import android.graphics.Paint
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
-import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerDrawingModelInterpolator
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerYMapper
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
@@ -124,9 +124,9 @@ class ForkedPropertyEqualityTest {
   }
 
   /**
-   * The two adjacent Booleans are declared in one order on the primary constructor and the other
-   * on the secondary, which has already produced one defect. A swap compiles and draws at the
-   * wrong scale, so it is pinned by value rather than by reading the declarations.
+   * The two adjacent Booleans are declared in one order on the primary constructor and the other on
+   * the secondary, which has already produced one defect. A swap compiles and draws at the wrong
+   * scale, so it is pinned by value rather than by reading the declarations.
    */
   @Test
   fun `the two adjacent Booleans do not swap on the way through a constructor`() {

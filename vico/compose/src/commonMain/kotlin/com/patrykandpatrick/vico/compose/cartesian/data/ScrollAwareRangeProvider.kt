@@ -312,8 +312,8 @@ public class ScrollAwareRangeProvider(
     /**
      * The model this geometry was measured for.
      *
-     * [scrollUpdates] replays, so a reader that wants the first measurement of a *new* model has
-     * to say so — `first()` alone resumes at once with the previous model's geometry.
+     * [scrollUpdates] replays, so a reader that wants the first measurement of a *new* model has to
+     * say so — `first()` alone resumes at once with the previous model's geometry.
      */
     val model: Any?,
     val scrollPixels: Float,

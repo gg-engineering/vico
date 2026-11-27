@@ -65,10 +65,10 @@ private fun Offset.toPoint() = Point(x, y)
  * Press-and-hold to mark a point, then drag along the chart to move the mark.
  *
  * This runs ahead of the scrollable modifier so one press can still become either gesture. A press
- * starts a timer; travelling past the platform's touch slop before it fires commits to a scroll,
- * or hands the gesture to the parent if the movement is decisively vertical. Once the timer fires
- * the scroll position is frozen and every event is claimed on the initial pass, which is what stops
- * an ancestor stealing the drag.
+ * starts a timer; travelling past the platform's touch slop before it fires commits to a scroll, or
+ * hands the gesture to the parent if the movement is decisively vertical. Once the timer fires the
+ * scroll position is frozen and every event is claimed on the initial pass, which is what stops an
+ * ancestor stealing the drag.
  */
 internal suspend fun PointerInputScope.detectScrubGestures(
   scrollState: VicoScrollState,

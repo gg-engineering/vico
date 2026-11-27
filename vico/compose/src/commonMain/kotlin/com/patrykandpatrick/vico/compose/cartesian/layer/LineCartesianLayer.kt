@@ -644,7 +644,11 @@ protected constructor(
         line.fillColor?.let { color ->
           line.draw(context, linePath, color, verticalAxisPosition)
           forEachPointInBounds(
-            series, drawingStart, pointInfoMap, mappedY = mappedY,          ) { entry, x, y, _, _ ->
+            series,
+            drawingStart,
+            pointInfoMap,
+            mappedY = mappedY,
+          ) { entry, x, y, _, _ ->
             updateMarkerTargets(entry, seriesKey, x, y, color)
           }
         }
@@ -656,13 +660,23 @@ protected constructor(
             lineCanvas.drawImage(lineFillBitmap, Offset.Zero, srcInPaint)
             canvas.drawImage(lineBitmap, Offset.Zero, EmptyPaint)
             forEachPointInBounds(
-              series, drawingStart, pointInfoMap, mappedY = mappedY,            ) { entry, x, y, _, _ ->
+              series,
+              drawingStart,
+              pointInfoMap,
+              mappedY = mappedY,
+            ) { entry, x, y, _, _ ->
               updateMarkerTargets(entry, seriesKey, x, y, lineFillBitmap)
             }
           }
 
         drawPointsAndDataLabels(
-          line, series, seriesKey, seriesIndex, drawingStart, pointInfoMap, mappedY,
+          line,
+          series,
+          seriesKey,
+          seriesIndex,
+          drawingStart,
+          pointInfoMap,
+          mappedY,
         )
       }
 

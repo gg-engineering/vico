@@ -527,8 +527,8 @@ internal constructor(
    * Every x a marker could be placed at, for a consumer that chooses its own.
    *
    * Written where the targets are sorted, because it is that sort. Derived on read instead, it
-   * needed a cache key, and every candidate was wrong: the map is one instance mutated in place,
-   * so identity never changes, and a scroll replaces the whole set while the count stays the same.
+   * needed a cache key, and every candidate was wrong: the map is one instance mutated in place, so
+   * identity never changes, and a scroll replaces the whole set while the count stays the same.
    */
   internal var markerTargetXValues: List<Double> = emptyList()
     private set
