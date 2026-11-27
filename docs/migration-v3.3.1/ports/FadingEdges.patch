@@ -1,0 +1,37 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/FadingEdges.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/FadingEdges.kt
+@@ -79,24 +79,30 @@
+       val maxScroll = getMaxScrollDistance()
+       var fadeAlphaFraction: Float
+ 
+-      if (scrollEnabled && startWidth.value > 0f && scroll > 0f) {
++      // Wide enough to cover the space the layer reserves before its first entry, taken from the
++      // layer itself. It used to be a second copy of that figure, passed in alongside and carried
++      // by a subclass that existed for nothing else. (MOB-2953)
++      val effectiveStartWidth = maxOf(startWidth.pixels, layerDimensions.startPadding)
++      val effectiveEndWidth = maxOf(endWidth.pixels, layerDimensions.endPadding)
++
++      if (scrollEnabled && effectiveStartWidth > 0f && scroll > 0f) {
+         fadeAlphaFraction = (scroll / visibilityThreshold.pixels).coerceAtMost(1f)
+ 
+         drawFadingEdge(
+           left = layerBounds.left,
+           top = layerBounds.top,
+-          right = layerBounds.left + startWidth.pixels,
++          right = layerBounds.left + effectiveStartWidth,
+           bottom = layerBounds.bottom,
+           direction = -1,
+           alpha = visibilityEasing.transform(fadeAlphaFraction),
+         )
+       }
+ 
+-      if (scrollEnabled && endWidth.value > 0f && scroll < maxScroll) {
++      if (scrollEnabled && effectiveEndWidth > 0f && scroll < maxScroll) {
+         fadeAlphaFraction = ((maxScroll - scroll) / visibilityThreshold.pixels).coerceAtMost(1f)
+ 
+         drawFadingEdge(
+-          left = layerBounds.right - endWidth.pixels,
++          left = layerBounds.right - effectiveEndWidth,
+           top = layerBounds.top,
+           right = layerBounds.right,
+           bottom = layerBounds.bottom,

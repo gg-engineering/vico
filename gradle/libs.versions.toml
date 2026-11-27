@@ -1,54 +1,74 @@
 [versions]
-activity = "1.10.1"
-agp = "8.10.1"
-androidXAnnotation = "1.9.1"
-androidXCore = "1.16.0"
-appcompat = "1.7.1"
-composeBom = "2025.06.00"
-composeMultiplatform = "1.8.1"
-composeNavigation = "2.8.0-alpha13"
-composeStableMarker = "1.0.6"
-coroutines = "1.10.2"
-dateTime = "0.6.2"
-dokka = "2.0.0"
-jupiter = "5.13.1"
-kotlin = "2.1.21"
-material = "1.12.0"
-materialIcons = "1.7.3"
-mavenPublish = "0.32.0"
-mockK = "1.14.2"
-testCore = "1.6.1"
+activity = "1.13.0"
+agp = "9.5.1"
+androidXAnnotation = "1.10.0"
+compose = "1.12.0"
+# The sample adopts Material 3 Expressive, available only in a 1.12.0-alpha Compose
+# release, which drags the sample’s Compose runtime up to 1.12.0-alpha02. The Compose
+# Gradle plugin bundles the Skia/skiko runtime for the web (and desktop) targets and must
+# match that runtime, or the app fails to link. The sample modules therefore apply the
+# Compose plugin at this version (`composeMultiplatformSample`), while the library modules
+# stay on the stable `compose` version (`composeMultiplatform`), keeping their published
+# dependencies alpha-free.
+composeSample = "1.12.0"
+composeMaterial3 = "1.9.0"
+composeMaterial3Expressive = "1.12.0-alpha03"
+composeMaterialIcons = "1.7.3"
+composeNavigation = "2.10.0-alpha02"
+coroutines = "1.11.0"
+dateTime = "0.8.0-0.6.x-compat"
+dokka = "2.2.0"
+glance = "1.2.0"
+jetpackComposeBom = "2026.08.00"
+kotlin = "2.4.21"
+lifecycleRuntime = "2.11.0"
+material = "1.14.0"
+mavenPublish = "0.37.0"
+mockK = "1.14.11"
+screenshot = "0.0.1-alpha15"
+uiTextAndroid = "1.12.0"
 
 [libraries]
 activityCompose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity" }
 androidApplication = { group = "com.android.application", name = "com.android.application.gradle.plugin", version.ref = "agp" }
-androidLibrary = { group = "com.android.library", name = "com.android.library.gradle.plugin", version.ref = "agp" }
+androidKotlinMultiplatformLibrary = { group = "com.android.kotlin.multiplatform.library", name = "com.android.kotlin.multiplatform.library.gradle.plugin", version.ref = "agp" }
 androidXAnnotation = { group = "androidx.annotation", name = "annotation", version.ref = "androidXAnnotation" }
-androidXCore = { group = "androidx.core", name = "core-ktx", version.ref = "androidXCore" }
-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
-composeBom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 composeCompiler = { group = "org.jetbrains.kotlin.plugin.compose", name = "org.jetbrains.kotlin.plugin.compose.gradle.plugin", version.ref = "kotlin" }
-composeFoundation = { group = "androidx.compose.foundation", name = "foundation" }
-composeMaterial = { group = "androidx.compose.material", name = "material" }
-composeMaterial3 = { group = "androidx.compose.material3", name = "material3" }
-composeMultiplatform = { group = "org.jetbrains.compose", name = "compose-gradle-plugin", version.ref = "composeMultiplatform" }
+composeDesktop = { group = "org.jetbrains.compose.desktop", name = "desktop-jvm", version.ref = "compose" }
+composeFoundation = { group = "org.jetbrains.compose.foundation", name = "foundation", version.ref = "compose" }
+composeMaterial = { group = "org.jetbrains.compose.material", name = "material", version.ref = "compose" }
+composeMaterial3 = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "composeMaterial3" }
+composeMaterial3Expressive = { group = "org.jetbrains.compose.material3", name = "material3", version.ref = "composeMaterial3Expressive" }
+composeMaterialIcons = { group = "org.jetbrains.compose.material", name = "material-icons-core", version.ref = "composeMaterialIcons" }
 composeNavigation = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "composeNavigation" }
-composePreview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-composeStableMarker = { group = "com.github.skydoves", name = "compose-stable-marker", version.ref = "composeStableMarker" }
-composeUI = { group = "androidx.compose.ui", name = "ui" }
-composeUITooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-composeViewBinding = { group = "androidx.compose.ui", name = "ui-viewbinding" }
+composeRuntime = { group = "org.jetbrains.compose.runtime", name = "runtime", version.ref = "compose" }
+composeUI = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "compose" }
+composeUITooling = { group = "org.jetbrains.compose.ui", name = "ui-tooling", version.ref = "compose" }
+composeUIToolingPreview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
 coroutinesCore = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 dokka = { group = "org.jetbrains.dokka", name = "dokka-gradle-plugin", version.ref = "dokka" }
-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "jupiter" }
-jupiterParams = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "jupiter" }
+glanceAppWidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+jetpackComposeBom = { group = "androidx.compose", name = "compose-bom", version.ref = "jetpackComposeBom" }
+jetpackComposeUI = { group = "androidx.compose.ui", name = "ui" }
+jetpackComposeUITooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 kotlinAndroid = { group = "org.jetbrains.kotlin.android", name = "org.jetbrains.kotlin.android.gradle.plugin", version.ref = "kotlin" }
-kotlinMultiplatform = { group = "org.jetbrains.kotlin.multiplatform", name = "org.jetbrains.kotlin.multiplatform.gradle.plugin", version.ref = "kotlin" }
+kotlinDateTime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "dateTime" }
+kotlinJvm = { group = "org.jetbrains.kotlin.jvm", name = "org.jetbrains.kotlin.jvm.gradle.plugin", version.ref = "kotlin" }
 kotlinStdLib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
 kotlinTest = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
-kotlinDateTime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "dateTime" }
+kotlinTestJunit5 = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit5", version.ref = "kotlin" }
+lifecycleRuntime = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntime" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
-materialIcons = { group = "org.jetbrains.compose.material", name = "material-icons-core", version.ref = "materialIcons" }
 mavenPublish = { group = "com.vanniktech.maven.publish", name = "com.vanniktech.maven.publish.gradle.plugin", version.ref = "mavenPublish" }
 mockK = { group = "io.mockk", name = "mockk", version.ref = "mockK" }
-testCore = { group = "androidx.test", name = "core-ktx", version.ref = "testCore" }
+screenshotValidationApi = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "screenshot" }
+serialization = { group = "org.jetbrains.kotlin.plugin.serialization", name = "org.jetbrains.kotlin.plugin.serialization.gradle.plugin", version.ref = "kotlin" }
+uiTextAndroid = { group = "androidx.compose.ui", name = "ui-text-android", version.ref = "uiTextAndroid" }
+
+[plugins]
+# `org.jetbrains.compose` is applied per module rather than shared through buildSrc, so the
+# library and the sample can track different Compose versions (see the `compose` /
+# `composeSample` versions above).
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "compose" }
+composeMultiplatformSample = { id = "org.jetbrains.compose", version.ref = "composeSample" }
+screenshot = { id = "com.android.compose.screenshot", version.ref = "screenshot" }

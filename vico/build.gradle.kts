@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 by Patryk Goworowski and Patrick Michalik.
+ * Copyright 2026 by Patryk Goworowski and Patrick Michalik.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,25 @@
  * limitations under the License.
  */
 
+import java.time.Year
+
 plugins { `dokka-convention` }
 
 subprojects {
-  group = "com.patrykandpatrick.vico"
+  group = "com.dmdbrands.lib"
   version = Versions.VICO
 }
 
 dependencies {
   dokka(project(":vico:compose"))
+  dokka(project(":vico:compose-glance"))
   dokka(project(":vico:compose-m2"))
   dokka(project(":vico:compose-m3"))
-  dokka(project(":vico:core"))
-  dokka(project(":vico:multiplatform"))
-  dokka(project(":vico:views"))
 }
 
-dokka { pluginsConfiguration.html { customStyleSheets.from("$rootDir/logo-styles.css") } }
+dokka {
+  pluginsConfiguration.html {
+    customStyleSheets.from("$rootDir/logo-styles.css")
+    footerMessage = "© ${Year.now().value} Patryk Goworowski and Patrick Michalik"
+  }
+}

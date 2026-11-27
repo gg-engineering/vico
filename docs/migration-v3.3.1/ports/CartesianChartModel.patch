@@ -1,0 +1,8 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/data/CartesianChartModel.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/data/CartesianChartModel.kt
+@@ -232,4 +232,4 @@
+ }
+ 
+ private fun getCoroutineContext(isPreview: Boolean): CoroutineContext =
+-  if (isPreview) Dispatchers.Unconfined + PreviewContext else EmptyCoroutineContext
++  if (isPreview) Dispatchers.Unconfined + InlineUpdateContext else EmptyCoroutineContext

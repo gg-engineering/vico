@@ -1,32 +1,47 @@
 # Vico
 
-![](https://img.shields.io/maven-central/v/com.patrykandpatrick.vico/core)
+![](https://img.shields.io/maven-central/v/com.patrykandpatrick.vico/compose)
 ![](https://img.shields.io/github/actions/workflow/status/patrykandpatrick/vico/build.yml?branch=master)
-![](https://kotlin-version.aws.icerock.dev/kotlin-version?group=com.patrykandpatrick.vico&name=core)
+![](https://kotlin-version.aws.icerock.dev/kotlin-version?group=com.patrykandpatrick.vico&name=compose)
 
-![](https://patrykandpatrick.com/vico/images/cover.png)
+![](cover.png)
 
-Vico is a powerful and extensible multiplatform chart library. It offers native support for Jetpack
-Compose, Compose Multiplatform, and the Android view system.
+Vico is a powerful and extensible chart library for Compose Multiplatform.
 
-Learn more in [the guide](https://patrykandpatrick.com/vico/guide).
+Learn more in [the guide](https://guide.vico.patrykandpatrick.com).
+
+## Sponsored by [Software Mansion](https://swmansion.com)
+
+Founded in 2012, [Software Mansion](https://swmansion.com) is a software agency
+with experience in building web and mobile apps. We are core React Native
+contributors and experts in dealing with all kinds of React Native issues. We
+can help you build your next dream
+product—[hire us](https://swmansion.com/contact/projects?utm_source=vico&utm_medium=readme).
+
+[![](https://logo.swmansion.com/logo?color=white&variant=desktop&width=152&tag=vico-github)](https://swmansion.com)
 
 ## About this fork
 
 This is Greater Goods' fork of [patrykandpatrick/vico](https://github.com/patrykandpatrick/vico),
 used for the charts in meApp (Weight Gurus) Android.
 
-- **Where our changes live:** the `version-X.Y.Z` / release branches (for example `version-3.0.0`,
-  `version-4.0.0`, `5.0.2`), not `master`. `master` tracks upstream; `develop` (branched from `master`) is where repo housekeeping PRs land.
-- **Publishing:** each library module is published by hand from its branch to GitHub Packages as
-  `com.dmdbrands.lib:vico-*` (for example `vico-core`, `vico-compose`, `vico-compose-m3`), using the
-  `publishGprPublicationToGitHubPackagesRepository` Gradle task with a `gpr.user` / `gpr.token`
-  that has `write:packages`. Bump `Versions.VICO` in `buildSrc` first. meApp reads it from
+- **Where our changes live:** the release branches (`version-3.0.0`, `version-4.0.0`, `5.0.2`),
+  not `master`. `master` tracks upstream.
+- **Publishing:** upstream folded `core` into `compose` at `v3.3.1`, so the `5.0.x` line publishes a
+  single artifact — `com.dmdbrands.lib:compose-android`, from `:vico:compose`, the only module with
+  a publishing block:
+
+  ```bash
+  ./gradlew :vico:compose:publishAllPublicationsToGitHubPackagesRepository
+  ```
+
+  Bump `Versions.VICO` in `buildSrc` first. Credentials are `gpr.user` / `gpr.token` in
+  `gradle-local.properties` (gitignored), and need a classic token with `write:packages`; values
+  there take precedence over `-P` flags and environment variables. meApp reads the artifact from
   `https://maven.pkg.github.com/gg-engineering/vico`. The upstream `release-update.yml` workflow
-  only runs in the upstream repository and does not publish this fork.
-- **Upstream sync:** merge (or rebase onto) an upstream release tag on a new branch, re-apply our
-  changes, bump the version, and publish (see the `update-from-upstream` branch and
-  `docs/migration-v3.3.1/` on `5.0.2`).
+  runs only in the upstream repository and does not publish this fork.
+- **Upstream sync:** branch from the upstream release tag, re-apply our changes by hand per file,
+  bump the version and publish. The `v3.3.1` migration is written up in `docs/migration-v3.3.1/`.
 
 ## Git hooks setup
 

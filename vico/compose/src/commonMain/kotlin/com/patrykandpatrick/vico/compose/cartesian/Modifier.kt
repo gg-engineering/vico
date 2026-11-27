@@ -1,0 +1,242 @@
+/*
+ * Copyright 2026 by Patryk Goworowski and Patrick Michalik.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.patrykandpatrick.vico.compose.cartesian
+
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.calculateTargetValue
+import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.ScrollableDefaults
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.util.fastForEach
+import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
+import com.patrykandpatrick.vico.compose.cartesian.marker.Interaction
+import com.patrykandpatrick.vico.compose.cartesian.marker.ScrubMarkerController
+import com.patrykandpatrick.vico.compose.common.Point
+import com.patrykandpatrick.vico.compose.common.detectZoomGestures
+import kotlin.contracts.ExperimentalContracts
+import kotlin.contracts.contract
+
+internal const val BASE_SCROLL_ZOOM_DELTA = 0.1f
+
+private fun Offset.toPoint() = Point(x, y)
+
+@Composable internal expect fun Modifier.extraPointerInput(scrollState: VicoScrollState): Modifier
+
+@Composable
+internal fun Modifier.pointerInput(
+  scrollState: VicoScrollState,
+  onInteraction: ((Interaction) -> Boolean)?,
+  onZoom: ((Float, Offset) -> Unit)?,
+  consumeMoveEvents: Boolean,
+  longPressEnabled: Boolean,
+  markerController: CartesianMarkerController? = null,
+  flingBehavior: FlingBehavior? = null,
+): Modifier {
+  val defaultFlingBehavior = ScrollableDefaults.flingBehavior()
+  val decayAnimationSpec = rememberSplineBasedDecay<Float>()
+  // A caller's own behaviour wins. meApp snaps to calendar boundaries — a day on a drag, a week
+  // or a month on a fling — which is not a single x step and so cannot be expressed as xSnapStep.
+  val resolvedFlingBehavior =
+    remember(flingBehavior, scrollState, defaultFlingBehavior, decayAnimationSpec) {
+      flingBehavior
+        ?: if (scrollState.xSnapStep != null) {
+          SnapFlingBehavior(scrollState, decayAnimationSpec)
+        } else {
+          defaultFlingBehavior
+        }
+    }
+  val scrubController = markerController as? ScrubMarkerController
+  // Read through, and keyed on nothing that moves. These arrive as a fresh lambda on every
+  // recomposition — one of their own keys is rebuilt per frame — and as a key of pointerInput
+  // that cancelled the gesture coroutine and took the press, the travel so far and the hold timer
+  // with it. A hold could only ever fire on a screen where nothing else was animating.
+  val currentOnInteraction by rememberUpdatedState(onInteraction)
+  val currentOnZoom by rememberUpdatedState(onZoom)
+  val hasInteraction = onInteraction != null
+  val hasZoom = onZoom != null
+  return scrollable(
+      state = scrollState.scrollableState,
+      orientation = Orientation.Horizontal,
+      // Always enabled, so nestedScroll keeps a parent list from stealing a scrub. Whether the
+      // position actually moves is the scroll state's business, not this modifier's.
+      enabled = true,
+      reverseDirection = true,
+      flingBehavior = resolvedFlingBehavior,
+    )
+    .pointerInput(markerController, hasInteraction, hasZoom) {
+      if (scrubController != null && hasInteraction) {
+        detectScrubGestures(
+          scrollState,
+          scrubController,
+          { currentOnInteraction?.invoke(it) },
+          { zoom, centroid -> currentOnZoom?.invoke(zoom, centroid) },
+        )
+        return@pointerInput
+      }
+      awaitPointerEventScope {
+        while (true) {
+          val event = awaitPointerEvent()
+          val position = event.changes.first().position
+          val pointerPosition = position.toPoint()
+          val consume =
+            when {
+              event.type == PointerEventType.Scroll &&
+                scrollState.scrollEnabled &&
+                currentOnZoom != null -> {
+                currentOnZoom?.invoke(
+                  1 - event.changes.first().scrollDelta.y * BASE_SCROLL_ZOOM_DELTA,
+                  event.changes.first().position,
+                )
+                true
+              }
+              currentOnInteraction == null -> continue
+              event.type == PointerEventType.Press && event.changes.size == 1 -> {
+                currentOnInteraction?.invoke(Interaction.Press(pointerPosition))
+                false
+              }
+              event.type == PointerEventType.Release || event.type == PointerEventType.Press -> {
+                currentOnInteraction?.invoke(Interaction.Release(pointerPosition))
+                false
+              }
+              event.type == PointerEventType.Move -> {
+                currentOnInteraction?.invoke(Interaction.Move(pointerPosition))
+                consumeMoveEvents && !scrollState.scrollEnabled
+              }
+              event.type == PointerEventType.Enter ->
+                currentOnInteraction?.invoke(Interaction.Enter(pointerPosition)) ?: false
+              event.type == PointerEventType.Exit -> {
+                val isInsideChartBounds = position.fits(size)
+                currentOnInteraction?.invoke(Interaction.Exit(pointerPosition, isInsideChartBounds))
+                  ?: false
+              }
+              else -> false
+            }
+          if (consume) {
+            event.changes.fastForEach { it.consume() }
+          }
+        }
+      }
+    }
+    .then(
+      // The scrub state machine raises its own Tap and LongPress, so adding these on top of it
+      // delivered every tap twice — and a second tap on a marked point clears it.
+      if (onInteraction != null && scrubController == null) {
+        Modifier.pointerInput(onInteraction, longPressEnabled) {
+          detectTapGestures(
+            onTap = { onInteraction(Interaction.Tap(it.toPoint())) },
+            onLongPress =
+              if (longPressEnabled) {
+                { onInteraction(Interaction.LongPress(it.toPoint())) }
+              } else {
+                null
+              },
+          )
+        }
+      } else {
+        Modifier
+      }
+    )
+    .then(
+      if (scrollState.scrollEnabled && onZoom != null) {
+        Modifier.pointerInput(onInteraction, onZoom) {
+          detectZoomGestures { centroid, zoom ->
+            onInteraction?.invoke(Interaction.Zoom(centroid.toPoint()))
+            onZoom(zoom, centroid)
+          }
+        }
+      } else {
+        Modifier
+      }
+    )
+    .extraPointerInput(scrollState)
+}
+
+private suspend fun PointerInputScope.detectTapGestures(
+  onTap: (Offset) -> Boolean,
+  onLongPress: ((Offset) -> Boolean)?,
+) {
+  awaitEachGesture {
+    val down = awaitFirstDown()
+    val inputChange =
+      if (onLongPress != null) {
+        val longPress = awaitLongPressOrCancellation(down.id)
+        if (longPress != null) {
+          if (onLongPress(longPress.position)) longPress.consume()
+          return@awaitEachGesture
+        }
+        currentEvent.changes.firstOrNull { it.id == down.id }
+      } else {
+        waitForUpOrCancellation()
+      }
+    if (inputChange.isTap(down) && onTap(inputChange.position)) inputChange.consume()
+  }
+}
+
+@OptIn(ExperimentalContracts::class)
+context(pointerEventScope: AwaitPointerEventScope)
+private fun PointerInputChange?.isTap(firstDown: PointerInputChange): Boolean {
+  contract { returns(true).implies(this@isTap != null) }
+  if (this == null) return false
+  val longPressTimeoutMillis = pointerEventScope.viewConfiguration.longPressTimeoutMillis
+  val touchSlop = pointerEventScope.viewConfiguration.touchSlop
+  val isNotLongPress = uptimeMillis - firstDown.uptimeMillis < longPressTimeoutMillis
+  val isNotMove = (firstDown.position - position).getDistance() < touchSlop
+  return !pressed && previousPressed && isNotLongPress && isNotMove
+}
+
+private fun Offset.fits(size: IntSize) = x >= 0f && x <= size.width && y >= 0f && y <= size.height
+
+internal class SnapFlingBehavior(
+  private val scrollState: VicoScrollState,
+  private val decayAnimationSpec: DecayAnimationSpec<Float>,
+) : FlingBehavior {
+  override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+    val targetValue = decayAnimationSpec.calculateTargetValue(scrollState.value, initialVelocity)
+    val snapDelta = scrollState.getSnapDelta(targetValue) ?: return 0f
+    var previousValue = 0f
+    animate(
+      initialValue = 0f,
+      targetValue = snapDelta,
+      initialVelocity = initialVelocity,
+      animationSpec = scrollState.snapAnimationSpec,
+    ) { value, _ ->
+      scrollBy(value - previousValue)
+      previousValue = value
+    }
+    return 0f
+  }
+}

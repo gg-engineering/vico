@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 by Patryk Goworowski and Patrick Michalik.
+ * Copyright 2026 by Patryk Goworowski and Patrick Michalik.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,31 +14,97 @@
  * limitations under the License.
  */
 
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
 plugins {
-  `publishing-convention`
-  id("com.android.library")
-  id("kotlin-android")
-  id("org.jetbrains.kotlin.plugin.compose")
   `dokka-convention`
+  `maven-publish`
+  id("com.android.kotlin.multiplatform.library")
+  alias(libs.plugins.composeMultiplatform)
+  id("org.jetbrains.kotlin.multiplatform")
+  id("org.jetbrains.kotlin.plugin.compose")
 }
 
-android {
-  configure()
-  kotlinOptions { jvmTarget = JavaVersion.VERSION_1_8.toString() }
-  namespace = moduleNamespace
+kotlin {
+  android {
+    configure()
+    namespace = moduleNamespace
+    withHostTest { isIncludeAndroidResources = true }
+  }
+  listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+    target.binaries.framework {
+      baseName = project.name
+      isStatic = true
+    }
+  }
+  jvm("desktop")
+  js {
+    browser()
+    binaries.executable()
+  }
+  @OptIn(ExperimentalWasmDsl::class)
+  wasmJs {
+    browser()
+    binaries.executable()
+  }
+  sourceSets {
+    commonMain.dependencies {
+      implementation(libs.androidXAnnotation)
+      implementation(libs.composeFoundation)
+      implementation(libs.composeRuntime)
+      implementation(libs.composeUI)
+      implementation(libs.coroutinesCore)
+      implementation(libs.kotlinStdLib)
+    }
+    // Keep Kotlin test APIs in `commonTest` so target-specific test source sets inherit them.
+    commonTest.dependencies { implementation(libs.kotlinTest) }
+    // MockK isn’t multiplatform, so host-side JVM tests get it here.
+    val androidHostTest by getting { dependencies { implementation(libs.mockK) } }
+  }
+  explicitApi()
 }
 
-kotlin { explicitApi() }
+/*
+ * Ensure `./gradlew test` includes this module’s test suite. In this module, the JVM-capable tests
+ * live under Android host tests.
+ */
+val testTask = tasks.findByName("test")
 
-composeCompiler { reportsDestination = layout.buildDirectory.dir("reports") }
+if (testTask != null) {
+  testTask.dependsOn("testAndroidHostTest")
+} else {
+  tasks.register("test") {
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    description = "Runs the vico-compose test suite on the JVM (Android host tests)."
+    dependsOn("testAndroidHostTest")
+  }
+}
 
-dependencies {
-  api(project(":vico:core"))
-  implementation(libs.androidXCore)
-  implementation(libs.appcompat)
-  implementation(libs.composeFoundation)
-  implementation(libs.composeUI)
-  implementation(libs.kotlinStdLib)
-  implementation(platform(libs.composeBom))
-  testImplementation(libs.kotlinTest)
+// Published to GitHub Packages rather than Maven Central: a fork, consumed only by meApp.
+// `maven-publish` rather than the upstream convention plugin, which signs every publication
+// and we hold no GPG key.
+val localProps =
+  Properties().apply {
+    val f = rootProject.file("gradle-local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+  }
+
+publishing {
+  repositories {
+    maven {
+      name = "GitHubPackages"
+      url = uri("https://maven.pkg.github.com/gg-engineering/vico")
+      credentials {
+        username =
+          localProps.getProperty("gpr.user")
+            ?: project.findProperty("gpr.user") as String?
+            ?: System.getenv("GITHUB_USERNAME")
+        password =
+          localProps.getProperty("gpr.token")
+            ?: project.findProperty("gpr.token") as String?
+            ?: System.getenv("GITHUB_TOKEN")
+      }
+    }
+  }
 }

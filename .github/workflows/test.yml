@@ -1,15 +1,26 @@
 name: Test
 on:
   push:
+    branches: [master]
   pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
+    # Upstream runs on Blacksmith; this fork's org has no such runners, so the job would queue forever.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew test
+      - run: ./gradlew :sample:android:validateDebugScreenshotTest
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: screenshot-test-report
+          path: sample/android/build/reports/screenshotTest/preview/debug

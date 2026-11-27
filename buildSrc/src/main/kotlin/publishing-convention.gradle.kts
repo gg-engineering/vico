@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-import com.vanniktech.maven.publish.SonatypeHost
-
 plugins { id("com.vanniktech.maven.publish") }
 
 mavenPublishing {
-  publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+  publishToMavenCentral(automaticRelease = true)
   signAllPublications()
   pom {
     name = "Vico"

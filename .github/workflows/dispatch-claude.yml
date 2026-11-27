@@ -1,0 +1,58 @@
+name: Dispatch Claude
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: Request
+        required: true
+        type: string
+jobs:
+  dispatch-claude:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      discussions: write
+      id-token: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+            discussions: write
+          settings: |
+            {
+              "permissions": {
+                "allow": ["Bash(*)"]
+              }
+            }
+          prompt: |
+            You are running from a manually dispatched GitHub Actions workflow for the `${{ github.repository }}` repository.
+
+            Carry out the operator's request using GitHub tools as needed. The repository source code is checked out and available.
+
+            Use `gh` or `gh api` for GitHub operations such as commenting on issues or discussions, closing them, adding or removing labels, and other repository maintenance tasks.
+
+            When the request asks you to post a pull request review, post an actual GitHub PR review, not a normal PR conversation comment. Prefer `gh pr review <number> --body-file <file>` with the correct review flag: use `--request-changes` when requesting changes, `--comment` for a non-blocking review comment, and `--approve` only when approving. If using the REST API directly, call `POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews`; set `event` to `REQUEST_CHANGES` when requesting changes, `COMMENT` for a non-blocking submitted review, or `APPROVE` only when approving. Do not use `gh pr comment`, issue comments, or a neutral review when the operator asks to request changes.
+
+            Add this footer at the bottom of every public comment or review body you post, after a blank line:
+
+            ```md
+            <sub>Based on maintainer input.</sub>
+            ```
+
+            When referring to commits or releases in any public-facing text, always format them as hyperlinks.
+
+            Before making changes, inspect the current state of any referenced issue, pull request, or discussion. Then perform the requested actions and finish with a concise summary of what you changed.
+
+            Treat the operator request as instructions and private context, not as text to publish verbatim. If the request asks you to respond publicly to an issue, pull request, or discussion, first inspect the thread, then write a polished, repository-maintainer-style response that reflects the operator's intent. Do not quote or closely paraphrase the operator's rough notes unless the request explicitly says to use exact wording.
+
+            Operator request:
+
+            ${{ github.event.inputs.request }}
+          claude_args: --model claude-opus-5

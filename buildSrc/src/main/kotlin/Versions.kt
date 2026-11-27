@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 by Patryk Goworowski and Patrick Michalik.
+ * Copyright 2026 by Patryk Goworowski and Patrick Michalik.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,10 @@
  */
 
 object Versions {
-  const val COMPILE_SDK = 35
-  const val MIN_SDK = 21
-  const val VICO = "2.2.0-alpha.1"
+  const val COMPILE_SDK = 37
+  const val MIN_SDK = 23
+  const val VICO = "5.0.2"
+
+  /** The upstream release this fork is rebased on. Our version line does not track theirs. */
+  const val UPSTREAM_BASE = "3.3.1"
 }

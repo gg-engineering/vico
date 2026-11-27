@@ -1,0 +1,18 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/common/Defaults.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/common/Defaults.kt
+@@ -22,12 +22,14 @@
+   val range: ClosedFloatingPointRange<Float> = 0f..1f
+   const val DIFF_DURATION: Int = 500
+   const val PIE_DIFF_DURATION: Int = 1_000
++  /** Duration for Y-range and yTransform animations (shared so they stay in sync). */
++  const val RANGE_ANIM_DURATION: Int = 300
+ }
+ 
+ internal object Defaults {
+   const val AXIS_LABEL_HORIZONTAL_PADDING: Int = 4
+   const val AXIS_LABEL_MAX_LINES: Int = 1
+-  const val AXIS_LABEL_VERTICAL_PADDING: Int = 4
++  const val AXIS_LABEL_VERTICAL_PADDING: Int = 2
+   const val AXIS_LABEL_SIZE: Int = 12
+   const val AXIS_LABEL_HORIZONTAL_MARGIN: Int = 0
+   const val AXIS_LABEL_VERTICAL_MARGIN: Int = 0

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 by Patryk Goworowski and Patrick Michalik.
+ * Copyright 2026 by Patryk Goworowski and Patrick Michalik.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,26 +14,43 @@
  * limitations under the License.
  */
 
+import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+
 plugins {
   `dokka-convention`
   `publishing-convention`
-  id("com.android.library")
-  id("kotlin-android")
+  id("com.android.kotlin.multiplatform.library")
+  alias(libs.plugins.composeMultiplatform)
+  id("org.jetbrains.kotlin.multiplatform")
   id("org.jetbrains.kotlin.plugin.compose")
 }
 
-android {
-  configure()
-  kotlinOptions { jvmTarget = JavaVersion.VERSION_1_8.toString() }
-  namespace = moduleNamespace
-}
-
-kotlin { explicitApi() }
-
-composeCompiler { reportsDestination = layout.buildDirectory.dir("reports") }
-
-dependencies {
-  api(project(":vico:compose"))
-  implementation(platform(libs.composeBom))
-  implementation(libs.composeMaterial3)
+kotlin {
+  android {
+    configure()
+    namespace = moduleNamespace
+  }
+  listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+    target.binaries.framework {
+      baseName = project.name
+      isStatic = true
+    }
+  }
+  jvm("desktop")
+  js {
+    browser()
+    binaries.executable()
+  }
+  @OptIn(ExperimentalWasmDsl::class)
+  wasmJs {
+    browser()
+    binaries.executable()
+  }
+  sourceSets {
+    commonMain.dependencies {
+      api(project(":vico:compose"))
+      implementation(libs.composeMaterial3)
+    }
+  }
+  explicitApi()
 }

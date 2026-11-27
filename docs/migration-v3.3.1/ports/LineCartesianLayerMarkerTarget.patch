@@ -1,0 +1,11 @@
+--- a/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/marker/LineCartesianLayerMarkerTarget.kt
++++ b/vico/compose/src/commonMain/kotlin/com/patrykandpatrick/vico/compose/cartesian/marker/LineCartesianLayerMarkerTarget.kt
+@@ -36,6 +36,8 @@
+     val entry: LineCartesianLayerModel.Entry,
+     val canvasY: Float,
+     val color: Color,
++    /** True when this point is interpolated (no real data point). Indicator dot is not drawn. */
++    val isInterpolated: Boolean = false,
+   )
+ }
+ 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 by Patryk Goworowski and Patrick Michalik.
+ * Copyright 2026 by Patryk Goworowski and Patrick Michalik.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ pluginManagement.repositories {
 
 @Suppress("UnstableApiUsage")
 dependencyResolutionManagement {
-  repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
   repositories {
     google()
     mavenCentral()
@@ -33,17 +32,13 @@ dependencyResolutionManagement {
 rootProject.name = "Vico"
 
 include(
-  "sample:app",
-  "sample:compose",
-  "sample:multiplatform",
-  "sample:views",
+  "sample:android",
+  "sample:desktop",
+  "sample:shared",
+  "sample:web",
   "vico",
   "vico:compose",
+  "vico:compose-glance",
   "vico:compose-m2",
   "vico:compose-m3",
-  "vico:core",
-  "vico:multiplatform",
-  "vico:multiplatform-m2",
-  "vico:multiplatform-m3",
-  "vico:views",
 )

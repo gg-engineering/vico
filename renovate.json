@@ -1,8 +1,8 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["config:base"],
+    "extends": ["config:recommended"],
+    "baseBranches": ["master", "v2.x.x"],
+    "dependencyDashboard": false,
     "automerge": true,
-    "automergeType": "branch",
-    "baseBranches": ["master", "v1"],
-    "dependencyDashboard": false
+    "semanticCommits": "enabled"
 }

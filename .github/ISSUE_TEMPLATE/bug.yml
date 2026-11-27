@@ -46,9 +46,8 @@ body:
       options:
         - Android
         - iOS
-        - Windows
-        - macOS
-        - Linux
+        - Desktop
+        - Web
     validations:
       required: true
   - type: input
@@ -62,9 +61,8 @@ body:
       description: For outdated versions, try updating Vico first.
       multiple: true
       options:
-        - 2.1.3
-        - 2.2.0-alpha.1
-        - 1.16.1
+        - 3.2.3
+        - 3.3.0-next.1
     validations:
       required: true
   - type: textarea
