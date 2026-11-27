@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChart.PersistentMarkerScope
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
@@ -415,7 +416,15 @@ internal constructor(
           return
         }
         canvas.save()
-        canvas.clipRect(contentStart, 0f, canvasSize.width, canvasSize.height)
+        // Only the reserved strip is cut away. Clipping everything left of it took the start
+        // axis's gutter with it, so a labelled start axis drew nothing.
+        canvas.clipRect(
+          layerBounds.left,
+          0f,
+          contentStart,
+          canvasSize.height,
+          ClipOp.Difference,
+        )
         block()
         canvas.restore()
       }
