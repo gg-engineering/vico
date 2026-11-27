@@ -19,3 +19,34 @@ can help you build your next dream
 product—[hire us](https://swmansion.com/contact/projects?utm_source=vico&utm_medium=readme).
 
 [![](https://logo.swmansion.com/logo?color=white&variant=desktop&width=152&tag=vico-github)](https://swmansion.com)
+
+## About this fork
+
+This is Greater Goods' fork of [patrykandpatrick/vico](https://github.com/patrykandpatrick/vico),
+used for the charts in meApp (Weight Gurus) Android.
+
+- **Where our changes live:** the release branches (`version-3.0.0`, `version-4.0.0`, `5.0.2`),
+  not `master`. `master` tracks upstream.
+- **Publishing:** upstream folded `core` into `compose` at `v3.3.1`, so the `5.0.x` line publishes a
+  single artifact — `com.dmdbrands.lib:compose-android`, from `:vico:compose`, the only module with
+  a publishing block:
+
+  ```bash
+  ./gradlew :vico:compose:publishAllPublicationsToGitHubPackagesRepository
+  ```
+
+  Bump `Versions.VICO` in `buildSrc` first. Credentials are `gpr.user` / `gpr.token` in
+  `gradle-local.properties` (gitignored), and need a classic token with `write:packages`; values
+  there take precedence over `-P` flags and environment variables. meApp reads the artifact from
+  `https://maven.pkg.github.com/gg-engineering/vico`. The upstream `release-update.yml` workflow
+  runs only in the upstream repository and does not publish this fork.
+- **Upstream sync:** branch from the upstream release tag, re-apply our changes by hand per file,
+  bump the version and publish. The `v3.3.1` migration is written up in `docs/migration-v3.3.1/`.
+
+## Git hooks setup
+
+Run once after cloning to enable the secret-scan and commit-message hooks:
+
+```bash
+git config core.hooksPath .githooks
+```

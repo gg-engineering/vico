@@ -1,0 +1,111 @@
+# DMD Brands Gitleaks Configuration
+# Secrets detection rules for CI pipeline
+#
+# Reference: SDLC Policy Section 5.6
+# CI Gate: Block on ANY finding
+
+title = "DMD Brands Gitleaks Config"
+
+[extend]
+# Extend the default gitleaks rules
+useDefault = true
+
+# Additional custom rules for healthcare/Me.Health specific patterns
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key"
+regex = '''(?i)(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+tags = ["aws", "key"]
+
+[[rules]]
+id = "aws-secret-key"
+description = "AWS Secret Key"
+regex = '''(?i)aws(.{0,20})?(?-i)['\"][0-9a-zA-Z\/+]{40}['\"]'''
+tags = ["aws", "secret"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|apikey|api[_-]?secret)[\s:=]+['\"]?[a-zA-Z0-9_\-]{20,}['\"]?'''
+tags = ["api", "key"]
+
+[[rules]]
+id = "generic-secret"
+description = "Generic Secret"
+regex = '''(?i)(secret|password|passwd|pwd|token|auth[_-]?token|access[_-]?token|bearer)[\s:=]+['\"][^'\"]{8,}['\"]'''
+tags = ["secret"]
+
+[[rules]]
+id = "private-key"
+description = "Private Key"
+regex = '''-----BEGIN (RSA|EC|DSA|OPENSSH|PGP) PRIVATE KEY-----'''
+tags = ["key", "private"]
+
+[[rules]]
+id = "jwt-token"
+description = "JWT Token"
+regex = '''eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*'''
+tags = ["jwt", "token"]
+
+[[rules]]
+id = "database-connection-string"
+description = "Database Connection String"
+regex = '''(?i)(mongodb|postgres|mysql|redis|amqp):\/\/[^\s'"]+'''
+tags = ["database", "connection"]
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack Webhook URL"
+regex = '''https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+'''
+tags = ["slack", "webhook"]
+
+[[rules]]
+id = "github-token"
+description = "GitHub Token"
+regex = '''gh[pousr]_[A-Za-z0-9_]{36,}'''
+tags = ["github", "token"]
+
+[[rules]]
+id = "hipaa-phi-ssn"
+description = "Potential SSN (PHI)"
+regex = '''\b\d{3}-\d{2}-\d{4}\b'''
+tags = ["phi", "ssn", "hipaa"]
+
+[[rules]]
+id = "hipaa-phi-mrn"
+description = "Potential Medical Record Number"
+regex = '''(?i)(mrn|medical[_-]?record[_-]?number|patient[_-]?id)[\s:=]+['\"]?\d{6,}['\"]?'''
+tags = ["phi", "mrn", "hipaa"]
+
+# Allowlist patterns (false positives)
+[allowlist]
+description = "Global allowlist"
+paths = [
+    '''\.lock$''',
+    '''package-lock\.json$''',
+    '''yarn\.lock$''',
+    '''pnpm-lock\.yaml$''',
+    '''go\.sum$''',
+    '''\.min\.js$''',
+    '''\.min\.css$''',
+    '''__snapshots__''',
+    '''\.test\.(ts|tsx|js|jsx)$''',
+    '''\.spec\.(ts|tsx|js|jsx)$''',
+    '''\.md$''',
+    '''CHANGELOG''',
+]
+
+# Test file patterns that often contain fake secrets
+regexes = [
+    '''example''',
+    '''sample''',
+    '''test''',
+    '''fake''',
+    '''dummy''',
+    '''placeholder''',
+    '''xxx+''',
+    '''your[_-]?api[_-]?key''',
+    '''your[_-]?secret''',
+    '''<[^>]+>''',
+    '''\$\{[^}]+\}''',
+]
