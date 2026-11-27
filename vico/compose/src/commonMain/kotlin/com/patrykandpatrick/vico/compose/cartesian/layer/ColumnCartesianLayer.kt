@@ -26,21 +26,44 @@ import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.CartesianMeasuringContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
-import com.patrykandpatrick.vico.compose.cartesian.data.*
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerDrawingModelInterpolator
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.compose.cartesian.data.ColumnCartesianLayerDrawingModel
+import com.patrykandpatrick.vico.compose.cartesian.data.ColumnCartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.getSliceIndices
 import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
 import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer.MergeMode
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.ColumnCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.cartesian.marker.MutableColumnCartesianLayerMarkerTarget
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.ValueWrapper
+import com.patrykandpatrick.vico.compose.common.bounds
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
 import com.patrykandpatrick.vico.compose.common.component.TextComponent
 import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
+import com.patrykandpatrick.vico.compose.common.copy
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
 import com.patrykandpatrick.vico.compose.common.doubled
+import com.patrykandpatrick.vico.compose.common.extractColor
+import com.patrykandpatrick.vico.compose.common.format
 import com.patrykandpatrick.vico.compose.common.getRepeating
+import com.patrykandpatrick.vico.compose.common.getStart
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
+import com.patrykandpatrick.vico.compose.common.inBounds
+import com.patrykandpatrick.vico.compose.common.length
+import com.patrykandpatrick.vico.compose.common.mutableListOf
+import com.patrykandpatrick.vico.compose.common.saveLayer
+import com.patrykandpatrick.vico.compose.common.setValue
+import com.patrykandpatrick.vico.compose.common.unaryMinus
+import com.patrykandpatrick.vico.compose.common.vicoTheme
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -674,7 +697,8 @@ private fun ColumnCartesianLayer.ColumnProvider.getColumnOrThrow(
     getColumn(entry, extraStore)
   } catch (e: NotImplementedError) {
     throw IllegalStateException(
-      "`ColumnProvider` must implement `getColumn(entry, extraStore)` or the deprecated `getColumn(entry, seriesIndex, extraStore)`.",
+      "`ColumnProvider` must implement `getColumn(entry, extraStore)`" +
+        "or the deprecated `getColumn(entry, seriesIndex, extraStore)`.",
       e,
     )
   }
@@ -688,7 +712,8 @@ private fun ColumnCartesianLayer.ColumnProvider.getWidestSeriesColumnOrThrow(
     getWidestSeriesColumn(seriesKey, seriesIndex, extraStore)
   } catch (e: NotImplementedError) {
     throw IllegalStateException(
-      "`ColumnProvider` must implement `getWidestSeriesColumn(seriesKey, seriesIndex, extraStore)` or the deprecated `getWidestSeriesColumn(seriesIndex, extraStore)`.",
+      "`ColumnProvider` must implement `getWidestSeriesColumn(seriesKey, seriesIndex, extraStore)`" +
+        "or the deprecated `getWidestSeriesColumn(seriesIndex, extraStore)`.",
       e,
     )
   }

@@ -18,8 +18,19 @@ package com.patrykandpatrick.vico.compose.common
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.absoluteValue
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.pow
+import kotlin.math.sign
+import kotlin.math.sqrt
 import kotlin.random.Random
+
+private const val HALF = 0.5
+
+private const val THOUSANDS_GROUP_SIZE = 3
 
 internal const val PI_RAD: Float = 180f
 
@@ -92,7 +103,7 @@ internal inline val Int?.orZero: Int
 internal inline val Double.roundedToNearest: Double
   get() {
     val absoluteValue = abs(this)
-    return sign * if (absoluteValue % 1 >= 0.5) ceil(absoluteValue) else floor(absoluteValue)
+    return sign * if (absoluteValue % 1 >= HALF) ceil(absoluteValue) else floor(absoluteValue)
   }
 
 internal inline val Float.piRad: Float
@@ -134,7 +145,8 @@ private fun String.addThousandsSeparator(
 ): String {
   val parts = split(decimalSeparator)
   val integerPart = parts[0]
-  val withCommas = integerPart.reversed().chunked(3).joinToString(thousandsSeparator).reversed()
+  val withCommas =
+    integerPart.reversed().chunked(THOUSANDS_GROUP_SIZE).joinToString(thousandsSeparator).reversed()
   return buildString {
     append(withCommas)
     if (parts.size > 1) {

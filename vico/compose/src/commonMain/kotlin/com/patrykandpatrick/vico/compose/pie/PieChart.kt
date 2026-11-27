@@ -55,6 +55,18 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.uuid.Uuid
 
+private const val FULL_CIRCLE_DEGREES = 360f
+
+private const val HALF_CIRCLE_DEGREES = 180f
+
+internal const val TOP_ANGLE_DEGREES = -90f
+
+private const val BOTTOM_ANGLE_DEGREES = 90f
+
+private const val MIN_SIN_HALF = 0.001f
+
+private const val MIN_SIN_HALF_SWEEP = 0.0001f
+
 /** A Compose Multiplatform pie chart. */
 @Stable
 public class PieChart
@@ -101,7 +113,7 @@ internal constructor(
     var currentAngle = startAngle
     context.model.entries.forEachIndexed { index, entry ->
       val sliceInfo = drawingModel.slices.getOrNull(index)
-      val degrees = sliceInfo?.degrees ?: (entry.value / context.model.sum * 360f)
+      val degrees = sliceInfo?.degrees ?: (entry.value / context.model.sum * FULL_CIRCLE_DEGREES)
       val slice = sliceProvider.getSlice(entry, index, context.model.extraStore)
       val centerAngle = currentAngle + degrees / 2f
       val offset = slice.getOffset(context, centerAngle)
@@ -109,7 +121,7 @@ internal constructor(
 
       val sweepAngle: Float
       val drawn: Boolean
-      if (donut && degrees < 360f) {
+      if (donut && degrees < FULL_CIRCLE_DEGREES) {
         sweepAngle = (degrees - 2f * outerTrim).coerceAtLeast(0f)
         drawn = sweepAngle > 0f
         if (drawn) {
@@ -160,10 +172,10 @@ internal constructor(
 
   /** Offsets a holeless slice’s tip so trimmed edges don’t just meet at the true center. */
   private fun tipOffset(spacingPx: Float, sweepDegrees: Float, bisectorAngle: Float): Offset {
-    if (spacingPx <= 0f || sweepDegrees >= 360f) return Offset.Zero
+    if (spacingPx <= 0f || sweepDegrees >= FULL_CIRCLE_DEGREES) return Offset.Zero
     val halfSweepRadians = (sweepDegrees / 2f).toRadians()
     val sinHalf = sin(halfSweepRadians).toFloat()
-    if (sinHalf <= 0.001f) return Offset.Zero
+    if (sinHalf <= MIN_SIN_HALF) return Offset.Zero
     val tipDistance = spacingPx / sinHalf
     val bisectorRadians = bisectorAngle.toRadians()
     return Offset(
@@ -174,7 +186,7 @@ internal constructor(
 
   private fun spacingToDegrees(context: PieChartDrawingContext, outerRadius: Float): Float {
     val spacingPx = with(context) { spacing.pixels }
-    return (spacingPx / outerRadius * 180f / kotlin.math.PI).toFloat() * 2f
+    return (spacingPx / outerRadius * HALF_CIRCLE_DEGREES / kotlin.math.PI).toFloat() * 2f
   }
 
   private fun getCircleBounds(
@@ -203,7 +215,7 @@ internal constructor(
     var currentAngle = startAngle
     entries.forEachIndexed { index, entry ->
       val sliceInfo = drawingModel.slices.getOrNull(index)
-      val degrees = sliceInfo?.degrees ?: (entry.value / context.model.sum * 360f)
+      val degrees = sliceInfo?.degrees ?: (entry.value / context.model.sum * FULL_CIRCLE_DEGREES)
       val sliceLabel = sliceProvider.getSlice(entry, index, context.model.extraStore).label
       if (sliceLabel != null) {
         insets =
@@ -231,8 +243,8 @@ internal constructor(
   internal fun getLabelInsets(context: PieChartMeasuringContext, chartBounds: Rect): PieInsets {
     val circleBounds = getCircleBounds(context, chartBounds)
     var insets = PieInsets()
-    val topAngle = -90f
-    val bottomAngle = 90f
+    val topAngle = TOP_ANGLE_DEGREES
+    val bottomAngle = BOTTOM_ANGLE_DEGREES
     context.model.entries.forEachIndexed { index, entry ->
       val slice = sliceProvider.getSlice(entry, index, context.model.extraStore)
       val sliceLabel = slice.label as? SliceLabel.Outside ?: return@forEachIndexed
@@ -626,7 +638,7 @@ internal fun createSlicePath(
   sweepAngle: Float,
   centerOffset: Offset = Offset.Zero,
 ): Path {
-  val fullSweep = sweepAngle >= 360f
+  val fullSweep = sweepAngle >= FULL_CIRCLE_DEGREES
   val path = Path()
   if (fullSweep) {
     path.fillType = PathFillType.EvenOdd
@@ -662,7 +674,7 @@ internal fun createSlicePath(
 }
 
 internal fun asinDegrees(value: Float): Float =
-  (asin(value.coerceIn(-1f, 1f)) * 180.0 / kotlin.math.PI).toFloat()
+  (asin(value.coerceIn(-1f, 1f)) * HALF_CIRCLE_DEGREES / kotlin.math.PI).toFloat()
 
 /**
  * Builds a donut-slice path whose straight edges are offset by half the spacing, so the gaps to the
@@ -694,7 +706,8 @@ internal fun createParallelSlicePath(
     val halfSweepRadians = (sweepAngle / 2f).toRadians()
     val sinHalfSweep = sin(halfSweepRadians).toFloat()
     val halfSpacing = circleBounds.width.half * sin(outerTrim.toRadians()).toFloat()
-    val tipRadius = if (sinHalfSweep > 0.0001f) halfSpacing / sinHalfSweep else holeRadius
+    val tipRadius =
+      if (sinHalfSweep > MIN_SIN_HALF_SWEEP) halfSpacing / sinHalfSweep else holeRadius
     val midRadians = (startAngle + sweepAngle / 2f).toRadians()
     path.lineTo(
       circleBounds.center.x + cos(midRadians).toFloat() * tipRadius,
@@ -711,7 +724,7 @@ internal fun getInsideLabelMaxWidth(
   sweepAngle: Float,
 ): Int {
   val sweepWidth =
-    if (sweepAngle >= 180f) {
+    if (sweepAngle >= HALF_CIRCLE_DEGREES) {
       ringThickness
     } else {
       2f * textRadius * sin(sweepAngle.toRadians() / 2.0)
@@ -729,7 +742,7 @@ public fun rememberPieChart(
   spacing: Dp = 0.dp,
   outerSize: PieSize.Outer = PieSize.Outer.Fill,
   innerSize: PieSize.Inner = PieSize.Inner.Zero,
-  startAngle: Float = -90f,
+  startAngle: Float = TOP_ANGLE_DEGREES,
   valueFormatter: PieValueFormatter = PieValueFormatter.Value,
   legend: Legend<PieChartMeasuringContext, PieChartDrawingContext>? = null,
 ): PieChart {

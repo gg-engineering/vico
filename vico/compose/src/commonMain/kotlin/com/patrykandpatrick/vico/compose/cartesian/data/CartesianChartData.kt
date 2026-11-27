@@ -16,7 +16,11 @@
 
 package com.patrykandpatrick.vico.compose.cartesian.data
 
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 
 @Immutable

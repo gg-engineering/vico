@@ -14,7 +14,45 @@
  * limitations under the License.
  */
 
-plugins { id("org.jetbrains.kotlinx.kover") }
+import com.android.build.api.dsl.KotlinMultiplatformAndroidLibraryTarget
+import io.gitlab.arturbosch.detekt.Detekt
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+
+plugins {
+  id("com.android.lint")
+  id("io.gitlab.arturbosch.detekt")
+  id("org.jetbrains.kotlinx.kover")
+}
+
+detekt {
+  buildUponDefaultConfig = true
+  config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+  source.setFrom("src/commonMain/kotlin", "src/androidMain/kotlin")
+}
+
+tasks.withType<Detekt>().configureEach {
+  reports {
+    html.required = true
+    xml.required = true
+    md.required = false
+    sarif.required = false
+    txt.required = false
+  }
+}
+
+pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
+  extensions.configure<KotlinMultiplatformExtension> {
+    targets.withType<KotlinMultiplatformAndroidLibraryTarget>().configureEach {
+      lint {
+        abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = false
+        // androidx.lifecycle ships a lint.jar built against an older lint API; lint skips it.
+        disable += "ObsoleteLintCustomCheck"
+      }
+    }
+  }
+}
 
 kover {
   reports {

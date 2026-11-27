@@ -22,8 +22,14 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.DrawingContext
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.Insets
+import com.patrykandpatrick.vico.compose.common.bounds
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
+import com.patrykandpatrick.vico.compose.common.setValue
 
 /**
  * Draws lines.

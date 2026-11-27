@@ -25,8 +25,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.patrykandpatrick.vico.compose.common.*
-import com.patrykandpatrick.vico.compose.common.component.*
+import com.patrykandpatrick.vico.compose.common.DashedShape
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.Insets
+import com.patrykandpatrick.vico.compose.common.component.Component
+import com.patrykandpatrick.vico.compose.common.component.LineComponent
+import com.patrykandpatrick.vico.compose.common.component.TextComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
+import com.patrykandpatrick.vico.compose.common.getValue
+import com.patrykandpatrick.vico.compose.common.setValue
+import com.patrykandpatrick.vico.compose.common.vicoTheme
 
 /** A [rememberTextComponent] alias with defaults for [Axis] labels. */
 @Composable

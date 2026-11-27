@@ -26,6 +26,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import kotlin.math.abs
 
+private const val DRAG_VELOCITY_THRESHOLD = 500f
+
+private const val DECAY_DISTANCE_DIVISOR = 4.5f
+
+private const val MIN_SNAP_DELTA_PX = 0.5f
+
 /**
  * Configuration for snap behavior on a scrollable chart.
  *
@@ -78,7 +84,7 @@ internal class ChartSnapFlingBehavior(
     val snapToLabel = config.snapToLabel ?: return initialVelocity
 
     val currentX = scrollState.scrollValueToX()
-    val isDrag = abs(initialVelocity) < 500f
+    val isDrag = abs(initialVelocity) < DRAG_VELOCITY_THRESHOLD
     val isForward = initialVelocity > 0f
 
     // Compute projected landing position using decay physics
@@ -89,7 +95,7 @@ internal class ChartSnapFlingBehavior(
         // The multiplier comes from a public data class the caller fills in. At zero the
         // projected distance is infinite and reaches the snap as NaN.
         val friction = config.animation.decayFrictionMultiplier.takeIf { it > 0f } ?: 2f
-        val decayDistance = initialVelocity / (friction * 4.5f)
+        val decayDistance = initialVelocity / (friction * DECAY_DISTANCE_DIVISOR)
         scrollState.scrollValueToX(scrollState.value + decayDistance)
       }
 
@@ -99,7 +105,7 @@ internal class ChartSnapFlingBehavior(
     val clampedTarget = targetPixels.coerceIn(0f, scrollState.maxValue)
     val delta = clampedTarget - scrollState.value
 
-    if (abs(delta) < 0.5f) return 0f
+    if (abs(delta) < MIN_SNAP_DELTA_PX) return 0f
 
     // Animate within ScrollScope using scrollBy — the only way to scroll
     // from inside performFling without conflicting with scrollableState lock.

@@ -31,7 +31,11 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.formatForAxis
-import com.patrykandpatrick.vico.compose.cartesian.layer.*
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerMargins
+import com.patrykandpatrick.vico.compose.cartesian.layer.HorizontalCartesianLayerMargins
+import com.patrykandpatrick.vico.compose.cartesian.layer.MutableCartesianLayerDimensions
 import com.patrykandpatrick.vico.compose.common.Defaults
 import com.patrykandpatrick.vico.compose.common.Position
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
@@ -431,7 +435,7 @@ protected constructor(
   override fun updateLayerDimensions(
     context: CartesianMeasuringContext,
     layerDimensions: MutableCartesianLayerDimensions,
-  ) {}
+  ): Unit = Unit
 
   protected open fun drawLabel(
     context: CartesianDrawingContext,

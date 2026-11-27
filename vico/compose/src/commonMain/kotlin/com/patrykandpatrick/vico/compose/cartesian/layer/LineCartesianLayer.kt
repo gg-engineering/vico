@@ -22,7 +22,15 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
@@ -30,24 +38,62 @@ import com.patrykandpatrick.vico.compose.cartesian.CartesianMeasuringContext
 import com.patrykandpatrick.vico.compose.cartesian.ColorScale
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
-import com.patrykandpatrick.vico.compose.cartesian.data.*
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerDrawingModelInterpolator
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerDrawingModel
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.ScrollAwareRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.component1
+import com.patrykandpatrick.vico.compose.cartesian.data.component2
+import com.patrykandpatrick.vico.compose.cartesian.data.component3
+import com.patrykandpatrick.vico.compose.cartesian.data.component4
+import com.patrykandpatrick.vico.compose.cartesian.data.getSliceIndices
 import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.Line
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer.PointConnector
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.LineCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.cartesian.marker.MutableLineCartesianLayerMarkerTarget
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.EmptyPaint
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.Point
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.ValueWrapper
+import com.patrykandpatrick.vico.compose.common.alpha
+import com.patrykandpatrick.vico.compose.common.bounds
 import com.patrykandpatrick.vico.compose.common.component.Component
 import com.patrykandpatrick.vico.compose.common.component.TextComponent
+import com.patrykandpatrick.vico.compose.common.component1
+import com.patrykandpatrick.vico.compose.common.component2
+import com.patrykandpatrick.vico.compose.common.copy
 import com.patrykandpatrick.vico.compose.common.data.CacheStore
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
 import com.patrykandpatrick.vico.compose.common.doubled
+import com.patrykandpatrick.vico.compose.common.format
+import com.patrykandpatrick.vico.compose.common.getBitmap
+import com.patrykandpatrick.vico.compose.common.getPixel
 import com.patrykandpatrick.vico.compose.common.getRepeating
+import com.patrykandpatrick.vico.compose.common.getStart
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
+import com.patrykandpatrick.vico.compose.common.inBounds
+import com.patrykandpatrick.vico.compose.common.length
+import com.patrykandpatrick.vico.compose.common.mutableListOf
 import com.patrykandpatrick.vico.compose.common.orZero
-import kotlin.math.*
+import com.patrykandpatrick.vico.compose.common.saveLayer
+import com.patrykandpatrick.vico.compose.common.setValue
+import com.patrykandpatrick.vico.compose.common.unaryMinus
+import com.patrykandpatrick.vico.compose.common.vicoTheme
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Draws the content of line charts.
@@ -1148,7 +1194,8 @@ private fun LineCartesianLayer.PointProvider.getPointOrThrow(
     getPoint(entry, extraStore)
   } catch (e: NotImplementedError) {
     throw IllegalStateException(
-      "`PointProvider` must implement `getPoint(entry, extraStore)` or the deprecated `getPoint(entry, seriesIndex, extraStore)`.",
+      "`PointProvider` must implement `getPoint(entry, extraStore)`" +
+        "or the deprecated `getPoint(entry, seriesIndex, extraStore)`.",
       e,
     )
   }

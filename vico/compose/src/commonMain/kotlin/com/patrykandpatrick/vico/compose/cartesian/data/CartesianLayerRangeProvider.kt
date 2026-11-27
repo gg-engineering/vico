@@ -19,7 +19,15 @@ package com.patrykandpatrick.vico.compose.cartesian.data
 import androidx.compose.runtime.Immutable
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayer
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.absoluteValue
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.log10
+import kotlin.math.max
+import kotlin.math.pow
+import kotlin.math.round
+import kotlin.math.sign
 
 /** Defines a [CartesianLayer]’s _x_ and _y_ ranges. */
 @Immutable

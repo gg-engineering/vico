@@ -20,11 +20,13 @@ import androidx.compose.runtime.Immutable
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.pie.PieChart
 
+private const val HASH_MULTIPLIER = 31
+
 /** Stores a [PieChart]'s data. */
 @Immutable
 public class PieChartModel
 internal constructor(public val entries: List<Entry>, public val extraStore: ExtraStore) {
-  internal val id: Int = 31 * entries.hashCode() + extraStore.hashCode()
+  internal val id: Int = HASH_MULTIPLIER * entries.hashCode() + extraStore.hashCode()
 
   /** The sum of all [Entry.value]s. */
   public val sum: Float = entries.sumOf { it.value.toDouble() }.toFloat()

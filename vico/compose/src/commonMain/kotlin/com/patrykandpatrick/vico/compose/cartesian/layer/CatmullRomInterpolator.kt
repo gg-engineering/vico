@@ -20,6 +20,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 
+private const val SCALE_DIVISOR = 6f
+
 internal data class CatmullRomInterpolator(private val alpha: Float) :
   LineCartesianLayer.Interpolator {
 
@@ -29,7 +31,7 @@ internal data class CatmullRomInterpolator(private val alpha: Float) :
     require(alpha in 0f..<1f) { "`alpha` must be in [0, 1)." }
   }
 
-  private val scale = (1f - alpha) / 6f
+  private val scale = (1f - alpha) / SCALE_DIVISOR
 
   override fun interpolate(
     context: CartesianDrawingContext,

@@ -19,11 +19,20 @@ package com.patrykandpatrick.vico.compose.cartesian.decoration
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.bounds
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
 import com.patrykandpatrick.vico.compose.common.component.TextComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+import com.patrykandpatrick.vico.compose.common.format
+import com.patrykandpatrick.vico.compose.common.getEnd
+import com.patrykandpatrick.vico.compose.common.getStart
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
+import com.patrykandpatrick.vico.compose.common.inBounds
+import com.patrykandpatrick.vico.compose.common.length
+import com.patrykandpatrick.vico.compose.common.setValue
+import com.patrykandpatrick.vico.compose.common.unaryMinus
 
 /**
  * A [Decoration] that highlights a _y_ value.

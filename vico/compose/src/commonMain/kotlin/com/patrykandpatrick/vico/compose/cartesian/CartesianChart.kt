@@ -35,23 +35,53 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
-import com.patrykandpatrick.vico.compose.cartesian.layer.*
+import com.patrykandpatrick.vico.compose.cartesian.layer.CandlestickCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerMarginUpdater
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerMargins
+import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerPadding
+import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.HorizontalCartesianLayerMargins
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.MonotoneInterpolator
+import com.patrykandpatrick.vico.compose.cartesian.layer.MutableCartesianLayerDimensions
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberCandlestickCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.scale
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerVisibilityListener
 import com.patrykandpatrick.vico.compose.cartesian.marker.LineCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.cartesian.marker.MutableLineCartesianLayerMarkerTarget
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.EmptyPaint
+import com.patrykandpatrick.vico.compose.common.Legend
+import com.patrykandpatrick.vico.compose.common.Point
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.ValueWrapper
+import com.patrykandpatrick.vico.compose.common.component1
+import com.patrykandpatrick.vico.compose.common.component2
+import com.patrykandpatrick.vico.compose.common.copy
 import com.patrykandpatrick.vico.compose.common.data.CacheStore
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
 import com.patrykandpatrick.vico.compose.common.gcdWith
+import com.patrykandpatrick.vico.compose.common.getBitmap
+import com.patrykandpatrick.vico.compose.common.getStart
+import com.patrykandpatrick.vico.compose.common.getValue
+import com.patrykandpatrick.vico.compose.common.length
+import com.patrykandpatrick.vico.compose.common.measure
+import com.patrykandpatrick.vico.compose.common.mutableListOf
 import com.patrykandpatrick.vico.compose.common.orZero
+import com.patrykandpatrick.vico.compose.common.random
+import com.patrykandpatrick.vico.compose.common.saveLayer
+import com.patrykandpatrick.vico.compose.common.setValue
 import kotlin.math.abs
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+
+private const val HASH_MULTIPLIER = 31
 
 private fun getDefaultXStep(model: CartesianChartModel, minX: Double): Double {
   var gcd = model.getXDeltaGcd()
@@ -319,7 +349,8 @@ internal constructor(
     with(context) {
       _markerTargets.clear()
       layerMargins.clear()
-      val persistentMarkerHashCode = 31 * persistentMarkers.hashCode() + model.extraStore.hashCode()
+      val persistentMarkerHashCode =
+        HASH_MULTIPLIER * persistentMarkers.hashCode() + model.extraStore.hashCode()
       if (persistentMarkerHashCode != previousPersistentMarkerHashCode) {
         updatePersistentMarkers(model.extraStore)
         previousPersistentMarkerHashCode = persistentMarkerHashCode
