@@ -43,6 +43,7 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.rememberHorizontalLegend
 import com.patrykandpatrick.vico.compose.common.rememberVerticalLegend
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -109,7 +110,10 @@ class DecorationFlowTest {
     goalLine.clear()
     push(goal = 185.0)
 
-    val frame = recorder.last!!
+    val frame =
+      composeRule.awaitFrame(recorder) { frame ->
+        goalLine.horizontalYs.lastOrNull()?.let { abs(it - frame.canvasY(185.0)) <= 0.5f } == true
+      }
     assertEquals(frame.canvasY(185.0), goalLine.horizontalYs.last(), 0.5f)
     assertTrue(goalLine.horizontalYs.last() < first)
   }
