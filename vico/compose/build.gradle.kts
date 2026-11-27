@@ -20,6 +20,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 plugins {
   `dokka-convention`
   `maven-publish`
+  `quality-convention`
   id("com.android.kotlin.multiplatform.library")
   alias(libs.plugins.composeMultiplatform)
   id("org.jetbrains.kotlin.multiplatform")
@@ -60,7 +61,18 @@ kotlin {
     // Keep Kotlin test APIs in `commonTest` so target-specific test source sets inherit them.
     commonTest.dependencies { implementation(libs.kotlinTest) }
     // MockK isn’t multiplatform, so host-side JVM tests get it here.
-    val androidHostTest by getting { dependencies { implementation(libs.mockK) } }
+    val androidHostTest by getting {
+      dependencies {
+        implementation(libs.mockK)
+        implementation(libs.coroutinesTest)
+        implementation(libs.junit4)
+        implementation(libs.robolectric)
+        implementation(project.dependencies.platform(libs.jetpackComposeBom))
+        implementation(libs.jetpackComposeUITest)
+        implementation(libs.jetpackComposeUITestManifest)
+        runtimeOnly(libs.junitVintageEngine)
+      }
+    }
   }
   explicitApi()
 }

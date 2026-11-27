@@ -20,9 +20,17 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
+private const val SCALE_DIVISOR = 6.0
+
+private const val CUBIC_COEFFICIENT = 3
+
+private const val DERIVATIVE_MIDDLE_COEFFICIENT = 4
+
+private const val DISCRIMINANT_FACTOR = 4
+
 internal fun getCatmullRomYRange(y: List<Double>, alpha: Float): ClosedRange<Double> {
   if (y.size < 2) return y.min()..y.max()
-  val scale = (1.0 - alpha) / 6.0
+  val scale = (1.0 - alpha) / SCALE_DIVISOR
   var minY = y.min()
   var maxY = y.max()
   for (index in 1..y.lastIndex) {
@@ -42,8 +50,8 @@ internal fun getCatmullRomYRange(y: List<Double>, alpha: Float): ClosedRange<Dou
 
 private fun cubicBezierExtrema(a: Double, b: Double, c: Double, d: Double): List<Double> {
   // dy/dt = 3[(d - 3c + 3b - a)t^2 + (2a - 4b + 2c)t + (b - a)]
-  val qa = d - 3 * c + 3 * b - a
-  val qb = 2 * a - 4 * b + 2 * c
+  val qa = d - CUBIC_COEFFICIENT * c + CUBIC_COEFFICIENT * b - a
+  val qb = 2 * a - DERIVATIVE_MIDDLE_COEFFICIENT * b + 2 * c
   val qc = b - a
   if (qa == 0.0) {
     // Linear: qb * t + qc = 0
@@ -51,7 +59,7 @@ private fun cubicBezierExtrema(a: Double, b: Double, c: Double, d: Double): List
     val t = -qc / qb
     return if (t in 0.0..1.0) listOf(evalCubicBezier(a, b, c, d, t)) else emptyList()
   }
-  val discriminant = qb * qb - 4 * qa * qc
+  val discriminant = qb * qb - DISCRIMINANT_FACTOR * qa * qc
   if (discriminant < 0) return emptyList()
   val sqrtD = sqrt(discriminant)
   val results = mutableListOf<Double>()
@@ -63,5 +71,8 @@ private fun cubicBezierExtrema(a: Double, b: Double, c: Double, d: Double): List
 
 private fun evalCubicBezier(a: Double, b: Double, c: Double, d: Double, t: Double): Double {
   val u = 1 - t
-  return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d
+  return u * u * u * a +
+    CUBIC_COEFFICIENT * u * u * t * b +
+    CUBIC_COEFFICIENT * u * t * t * c +
+    t * t * t * d
 }

@@ -17,14 +17,26 @@
 package com.patrykandpatrick.vico.compose.common.component
 
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.shadow.DropShadowPainter
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.graphics.withSave
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.DrawingContext
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.Insets
+import com.patrykandpatrick.vico.compose.common.alpha
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
+import com.patrykandpatrick.vico.compose.common.outline
+import com.patrykandpatrick.vico.compose.common.setValue
 
 /**
  * Draws [Shape]s.

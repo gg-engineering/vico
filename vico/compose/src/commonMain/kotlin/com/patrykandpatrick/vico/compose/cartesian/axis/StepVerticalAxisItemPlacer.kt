@@ -23,7 +23,12 @@ import com.patrykandpatrick.vico.compose.common.data.CacheStore
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.getDivisors
 import com.patrykandpatrick.vico.compose.common.half
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.log10
+import kotlin.math.max
+import kotlin.math.pow
 
 internal class StepVerticalAxisItemPlacer(
   private val step: (ExtraStore) -> Double?,

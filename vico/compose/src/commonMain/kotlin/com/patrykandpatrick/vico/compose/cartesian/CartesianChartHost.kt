@@ -21,23 +21,56 @@ import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.FlingBehavior
-import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
-import com.patrykandpatrick.vico.compose.cartesian.data.*
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModel
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.ScrollAwareRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.collectAsState
+import com.patrykandpatrick.vico.compose.cartesian.data.component1
+import com.patrykandpatrick.vico.compose.cartesian.data.component2
+import com.patrykandpatrick.vico.compose.cartesian.data.component3
+import com.patrykandpatrick.vico.compose.cartesian.data.component4
+import com.patrykandpatrick.vico.compose.cartesian.data.defaultCartesianDiffAnimationSpec
+import com.patrykandpatrick.vico.compose.cartesian.data.toImmutable
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.MutableCartesianLayerDimensions
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController.Lock
 import com.patrykandpatrick.vico.compose.cartesian.marker.Interaction
 import com.patrykandpatrick.vico.compose.cartesian.marker.ScrubMarkerController
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.ChartHostBox
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.MutableDrawScope
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.ValueWrapper
+import com.patrykandpatrick.vico.compose.common.component1
+import com.patrykandpatrick.vico.compose.common.component2
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+import com.patrykandpatrick.vico.compose.common.getValue
+import com.patrykandpatrick.vico.compose.common.setValue
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.FlowPreview
@@ -48,6 +81,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+
+private const val MIN_RANGE_LENGTH = 1e-6
 
 /**
  * The maximum horizontal distance, in pixels, within which two [CartesianMarker.Target]s are
@@ -113,7 +148,8 @@ public fun CartesianChartHost(
   val modelWrapper by
     modelProducer.collectAsState(chart, animationSpec, initialAnimationSpec, mutableRanges)
   // The producer's ranges are deliberately discarded — see below.
-  val (model, previousModel, _, extraStore) = modelWrapper
+  val (model, previousModel) = modelWrapper
+  val extraStore = modelWrapper.extraStore
 
   // The producer computes ranges only on a push, so a window arriving after one would never reach
   // the chart. Keyed on `chart` because a provider change arrives as a new instance.
@@ -297,18 +333,20 @@ public fun CartesianChartHost(
   zoomState: VicoZoomState = rememberDefaultVicoZoomState(scrollState.scrollEnabled),
   chartAreaHeight: Dp = Defaults.CARTESIAN_CHART_AREA_HEIGHT.dp,
 ) {
-  val ranges = remember { MutableCartesianChartRanges() }
-  remember(chart, model) {
-    ranges.reset()
-    chart.updateRanges(ranges, model)
-  }
+  val mutableRanges = remember { MutableCartesianChartRanges() }
+  val ranges =
+    remember(chart, model) {
+      mutableRanges.reset()
+      chart.updateRanges(mutableRanges, model)
+      mutableRanges.toImmutable()
+    }
   CartesianChartHostImpl(
     chart,
     model,
     modifier,
     scrollState,
     zoomState,
-    ranges.toImmutable(),
+    ranges,
     chartAreaHeight,
   )
 }
@@ -777,14 +815,14 @@ private class AnimatedYCartesianChartRanges(
     object : CartesianChartRanges.YRange {
       override val minY: Double = animMinY
       override val maxY: Double = animMaxY
-      override val length: Double = (animMaxY - animMinY).coerceAtLeast(1e-6)
+      override val length: Double = (animMaxY - animMinY).coerceAtLeast(MIN_RANGE_LENGTH)
     }
 
   private val targetRange =
     object : CartesianChartRanges.YRange {
       override val minY: Double = targetMinY
       override val maxY: Double = targetMaxY
-      override val length: Double = (targetMaxY - targetMinY).coerceAtLeast(1e-6)
+      override val length: Double = (targetMaxY - targetMinY).coerceAtLeast(MIN_RANGE_LENGTH)
     }
 
   override fun getYRange(axisPosition: Axis.Position.Vertical?): CartesianChartRanges.YRange =

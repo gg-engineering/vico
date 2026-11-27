@@ -23,6 +23,12 @@ import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import kotlin.math.abs
 import kotlin.math.min
 
+private const val BEZIER_THIRD = 3f
+
+private const val HERMITE_H01_COEFFICIENT = 3
+
+private const val FRITSCH_CARLSON_LIMIT = 3.0
+
 /**
  * Monotone cubic interpolation using the Fritsch-Carlson algorithm.
  *
@@ -90,10 +96,10 @@ internal object MonotoneInterpolator : LineCartesianLayer.Interpolator {
       val t1 = tangents[index]
 
       // Hermite to Bezier: control points at 1/3 intervals
-      val c1x = p1.x + dx / 3f
-      val c1y = p1.y + t0 * dx / 3f
-      val c2x = p2.x - dx / 3f
-      val c2y = p2.y - t1 * dx / 3f
+      val c1x = p1.x + dx / BEZIER_THIRD
+      val c1y = p1.y + t0 * dx / BEZIER_THIRD
+      val c2x = p2.x - dx / BEZIER_THIRD
+      val c2y = p2.y - t1 * dx / BEZIER_THIRD
 
       path.cubicTo(c1x, c1y, c2x, c2y, p2.x, p2.y)
     }
@@ -155,7 +161,7 @@ internal object MonotoneInterpolator : LineCartesianLayer.Interpolator {
 
     val h00 = (1 + 2 * t) * (1 - t) * (1 - t)
     val h10 = t * (1 - t) * (1 - t)
-    val h01 = t * t * (3 - 2 * t)
+    val h01 = t * t * (HERMITE_H01_COEFFICIENT - 2 * t)
     val h11 = t * t * (t - 1)
 
     return h00 * y0 + h10 * dx * t0 + h01 * y1 + h11 * dx * t1
@@ -164,7 +170,7 @@ internal object MonotoneInterpolator : LineCartesianLayer.Interpolator {
   private fun computeMonotoneTangentD(m1: Double, m2: Double): Double {
     if (m1 * m2 <= 0.0) return 0.0
     val harmonicMean = 2.0 * m1 * m2 / (m1 + m2)
-    val maxAllowed = 3.0 * min(abs(m1), abs(m2))
+    val maxAllowed = FRITSCH_CARLSON_LIMIT * min(abs(m1), abs(m2))
     return harmonicMean.coerceIn(-maxAllowed, maxAllowed)
   }
 
@@ -177,7 +183,7 @@ internal object MonotoneInterpolator : LineCartesianLayer.Interpolator {
   private fun computeMonotoneTangent(m1: Float, m2: Float): Float {
     if (m1 * m2 <= 0f) return 0f
     val harmonicMean = 2f * m1 * m2 / (m1 + m2)
-    val maxAllowed = 3f * min(abs(m1), abs(m2))
+    val maxAllowed = FRITSCH_CARLSON_LIMIT.toFloat() * min(abs(m1), abs(m2))
     return harmonicMean.coerceIn(-maxAllowed, maxAllowed)
   }
 }

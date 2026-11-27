@@ -1,0 +1,29 @@
+# Each rule turned off below needs a public-API change or a restructure of upstream Vico code to
+# satisfy; the README lists the reason per rule.
+complexity:
+  ComplexCondition:
+    active: false
+  CyclomaticComplexMethod:
+    active: false
+  LargeClass:
+    active: false
+  LongMethod:
+    active: false
+  LongParameterList:
+    active: false
+  NestedBlockDepth:
+    active: false
+  TooManyFunctions:
+    active: false
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+
+style:
+  LoopWithTooManyJumpStatements:
+    active: false
+  MagicNumber:
+    ignoreAnnotation: true
+  ReturnCount:
+    active: false

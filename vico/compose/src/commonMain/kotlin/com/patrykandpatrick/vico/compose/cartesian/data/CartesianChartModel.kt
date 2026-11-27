@@ -21,18 +21,40 @@ package com.patrykandpatrick.vico.compose.cartesian.data
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChart
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Animation
+import com.patrykandpatrick.vico.compose.common.NEW_PRODUCER_ERROR_MESSAGE
+import com.patrykandpatrick.vico.compose.common.ValueWrapper
+import com.patrykandpatrick.vico.compose.common.copy
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
 import com.patrykandpatrick.vico.compose.common.gcdWith
+import com.patrykandpatrick.vico.compose.common.getValue
+import com.patrykandpatrick.vico.compose.common.rememberWrappedValue
+import com.patrykandpatrick.vico.compose.common.runBlocking
+import com.patrykandpatrick.vico.compose.common.setValue
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Stores a [CartesianChart]’s data. */
 public class CartesianChartModel {

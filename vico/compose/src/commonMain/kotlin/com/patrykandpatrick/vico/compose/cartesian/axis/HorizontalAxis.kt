@@ -34,18 +34,26 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerDimensions
 import com.patrykandpatrick.vico.compose.cartesian.layer.CartesianLayerMargins
 import com.patrykandpatrick.vico.compose.cartesian.layer.MutableCartesianLayerDimensions
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.bounds
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
 import com.patrykandpatrick.vico.compose.common.component.TextComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.doubled
+import com.patrykandpatrick.vico.compose.common.getStart
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
 import com.patrykandpatrick.vico.compose.common.isBoundOf
 import com.patrykandpatrick.vico.compose.common.orZero
+import com.patrykandpatrick.vico.compose.common.setValue
+import com.patrykandpatrick.vico.compose.common.unaryMinus
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
+
+private const val EDGE_TOLERANCE_DIVISOR = 1000
 
 /** How close to a chart edge a separator may fall before it is suppressed. */
 private const val SEPARATOR_EDGE_EPSILON_PX = 1f
@@ -559,7 +567,7 @@ protected constructor(
    * nearest step, so it lands near ranges.minX and an exact test passes straight over it.
    */
   private fun CartesianDrawingContext.isChartEdge(x: Double): Boolean {
-    val tolerance = ranges.xStep / 1000
+    val tolerance = ranges.xStep / EDGE_TOLERANCE_DIVISOR
     return abs(x - ranges.minX) < tolerance || abs(x - ranges.maxX) < tolerance
   }
 

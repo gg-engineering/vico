@@ -26,16 +26,30 @@ import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.CartesianMeasuringContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
-import com.patrykandpatrick.vico.compose.cartesian.data.*
+import com.patrykandpatrick.vico.compose.cartesian.data.CandlestickCartesianLayerDrawingModel
+import com.patrykandpatrick.vico.compose.cartesian.data.CandlestickCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.data.CandlestickCartesianLayerModel.Change
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerDrawingModelInterpolator
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.compose.cartesian.data.MutableCartesianChartRanges
+import com.patrykandpatrick.vico.compose.cartesian.data.getSliceIndices
 import com.patrykandpatrick.vico.compose.cartesian.getVisibleXRange
 import com.patrykandpatrick.vico.compose.cartesian.marker.CandlestickCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarker
-import com.patrykandpatrick.vico.compose.common.*
+import com.patrykandpatrick.vico.compose.common.Defaults
+import com.patrykandpatrick.vico.compose.common.Position
+import com.patrykandpatrick.vico.compose.common.ValueWrapper
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
+import com.patrykandpatrick.vico.compose.common.copy
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import com.patrykandpatrick.vico.compose.common.data.MutableExtraStore
+import com.patrykandpatrick.vico.compose.common.extractColor
+import com.patrykandpatrick.vico.compose.common.getStart
+import com.patrykandpatrick.vico.compose.common.getValue
 import com.patrykandpatrick.vico.compose.common.half
+import com.patrykandpatrick.vico.compose.common.length
+import com.patrykandpatrick.vico.compose.common.setValue
 import kotlin.math.max
 
 /**
@@ -481,7 +495,8 @@ private fun CandlestickCartesianLayer.CandleProvider.getCandleOrThrow(
     getCandle(entry, key, extraStore)
   } catch (e: NotImplementedError) {
     throw IllegalStateException(
-      "`CandleProvider` must implement `getCandle(entry, key, extraStore)` or the deprecated `getCandle(entry, extraStore)`.",
+      "`CandleProvider` must implement `getCandle(entry, key, extraStore)`" +
+        "or the deprecated `getCandle(entry, extraStore)`.",
       e,
     )
   }
@@ -494,7 +509,8 @@ private fun CandlestickCartesianLayer.CandleProvider.getWidestCandleOrThrow(
     getWidestCandle(key, extraStore)
   } catch (e: NotImplementedError) {
     throw IllegalStateException(
-      "`CandleProvider` must implement `getWidestCandle(key, extraStore)` or the deprecated `getWidestCandle(extraStore)`.",
+      "`CandleProvider` must implement `getWidestCandle(key, extraStore)`" +
+        "or the deprecated `getWidestCandle(extraStore)`.",
       e,
     )
   }

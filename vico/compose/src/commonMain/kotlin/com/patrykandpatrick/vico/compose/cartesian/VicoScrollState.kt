@@ -16,7 +16,11 @@
 
 package com.patrykandpatrick.vico.compose.cartesian
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.AnimationVector
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -415,7 +419,7 @@ public class VicoScrollState {
   }
 
   internal companion object {
-    fun Saver(
+    fun saver(
       scrollEnabled: Boolean,
       initialScroll: Scroll.Absolute,
       autoScroll: Scroll,
@@ -477,7 +481,7 @@ public fun rememberVicoScrollState(
           xSnapStep,
           snapAnimationSpec,
         ) {
-          VicoScrollState.Saver(
+          VicoScrollState.saver(
             scrollEnabled,
             initialScroll,
             autoScroll,
