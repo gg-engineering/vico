@@ -17,14 +17,19 @@ composeMaterialIcons = "1.7.3"
 composeNavigation = "2.10.0-alpha02"
 coroutines = "1.11.0"
 dateTime = "0.8.0-0.6.x-compat"
+detekt = "1.23.8"
 dokka = "2.2.0"
 glance = "1.2.0"
 jetpackComposeBom = "2026.08.00"
+junit4 = "4.13.2"
+junitVintage = "5.13.4"
 kotlin = "2.4.21"
+kover = "0.9.11"
 lifecycleRuntime = "2.11.0"
 material = "1.14.0"
 mavenPublish = "0.37.0"
 mockK = "1.14.11"
+robolectric = "4.18.1"
 screenshot = "0.0.1-alpha15"
 uiTextAndroid = "1.12.0"
 
@@ -46,21 +51,29 @@ composeUI = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "co
 composeUITooling = { group = "org.jetbrains.compose.ui", name = "ui-tooling", version.ref = "compose" }
 composeUIToolingPreview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
 coroutinesCore = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutinesTest = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+detekt = { group = "io.gitlab.arturbosch.detekt", name = "detekt-gradle-plugin", version.ref = "detekt" }
 dokka = { group = "org.jetbrains.dokka", name = "dokka-gradle-plugin", version.ref = "dokka" }
 glanceAppWidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 jetpackComposeBom = { group = "androidx.compose", name = "compose-bom", version.ref = "jetpackComposeBom" }
 jetpackComposeUI = { group = "androidx.compose.ui", name = "ui" }
+jetpackComposeUITest = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+jetpackComposeUITestManifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 jetpackComposeUITooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
+junitVintageEngine = { group = "org.junit.vintage", name = "junit-vintage-engine", version.ref = "junitVintage" }
 kotlinAndroid = { group = "org.jetbrains.kotlin.android", name = "org.jetbrains.kotlin.android.gradle.plugin", version.ref = "kotlin" }
 kotlinDateTime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "dateTime" }
 kotlinJvm = { group = "org.jetbrains.kotlin.jvm", name = "org.jetbrains.kotlin.jvm.gradle.plugin", version.ref = "kotlin" }
 kotlinStdLib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
 kotlinTest = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
 kotlinTestJunit5 = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit5", version.ref = "kotlin" }
+kover = { group = "org.jetbrains.kotlinx", name = "kover-gradle-plugin", version.ref = "kover" }
 lifecycleRuntime = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntime" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 mavenPublish = { group = "com.vanniktech.maven.publish", name = "com.vanniktech.maven.publish.gradle.plugin", version.ref = "mavenPublish" }
 mockK = { group = "io.mockk", name = "mockk", version.ref = "mockK" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 screenshotValidationApi = { group = "com.android.tools.screenshot", name = "screenshot-validation-api", version.ref = "screenshot" }
 serialization = { group = "org.jetbrains.kotlin.plugin.serialization", name = "org.jetbrains.kotlin.plugin.serialization.gradle.plugin", version.ref = "kotlin" }
 uiTextAndroid = { group = "androidx.compose.ui", name = "ui-text-android", version.ref = "uiTextAndroid" }
