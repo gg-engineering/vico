@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -37,16 +37,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.patrykandpatrick.vico.compose.cartesian.layer.absolute
-import com.patrykandpatrick.vico.compose.cartesian.layer.absoluteRelative
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberCandlestickCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
-import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
-import com.patrykandpatrick.vico.compose.common.component.rememberShapeComponent
-import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.BaseAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
@@ -59,12 +49,20 @@ import com.patrykandpatrick.vico.compose.cartesian.data.candlestickSeries
 import com.patrykandpatrick.vico.compose.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.compose.cartesian.layer.CandlestickCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.absolute
+import com.patrykandpatrick.vico.compose.cartesian.layer.absoluteRelative
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberCandlestickCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.marker.CandlestickCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.cartesian.marker.DefaultCartesianMarker
+import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
 import com.patrykandpatrick.vico.compose.common.DashedShape
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.MarkerCornerBasedShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.patrykandpatrick.vico.compose.common.component.rememberLineComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberShapeComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -415,9 +413,7 @@ class ChartOptionsFlowTest {
                 label =
                   rememberTextComponent(
                     background =
-                      rememberShapeComponent(
-                        shape = MarkerCornerBasedShape(RoundedCornerShape(25))
-                      )
+                      rememberShapeComponent(shape = MarkerCornerBasedShape(RoundedCornerShape(25)))
                   ),
                 labelPosition =
                   if (variant == 0) DefaultCartesianMarker.LabelPosition.AroundPoint

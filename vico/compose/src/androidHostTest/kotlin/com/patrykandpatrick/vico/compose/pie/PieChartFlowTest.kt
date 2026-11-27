@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.pie
 
 import android.graphics.Bitmap
@@ -105,12 +104,21 @@ class PieChartFlowTest {
   private fun capture(): Bitmap {
     val bitmap = composeRule.captureWindow()
     val node = composeRule.onNodeWithTag(TAG).fetchSemanticsNode().boundsInWindow
-    bounds = android.graphics.Rect(node.left.toInt(), node.top.toInt(), node.right.toInt(), node.bottom.toInt())
+    bounds =
+      android.graphics.Rect(
+        node.left.toInt(),
+        node.top.toInt(),
+        node.right.toInt(),
+        node.bottom.toInt(),
+      )
     return bitmap
   }
 
   private fun Bitmap.at(dx: Float, dy: Float): Int =
-    getPixel((bounds.exactCenterX() + dx * bounds.width() / 2).toInt(), (bounds.exactCenterY() + dy * bounds.height() / 2).toInt())
+    getPixel(
+      (bounds.exactCenterX() + dx * bounds.width() / 2).toInt(),
+      (bounds.exactCenterY() + dy * bounds.height() / 2).toInt(),
+    )
 
   @Test
   fun `slices take their share of the circle clockwise from the top`() {

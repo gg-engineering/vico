@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.foundation.layout.width
@@ -25,19 +24,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
-import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
 import com.patrykandpatrick.vico.compose.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.marker.ColumnCartesianLayerMarkerTarget
 import com.patrykandpatrick.vico.compose.cartesian.marker.DefaultCartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.marker.LineCartesianLayerMarkerTarget
+import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -204,6 +203,45 @@ class MarkerFlowTest {
     val target = markerListener.shown!!.single() as ColumnCartesianLayerMarkerTarget
     assertEquals(1.0, target.x, 0.0)
     assertEquals(9.0, target.columns.single().entry.y, 0.0)
+  }
+
+  @Test
+  fun `pressing the second column of a group marks that column, not the first`() {
+    val second = RecordingLineComponent(thicknessDp = 8f)
+    composeRule.setContent {
+      CartesianChartHost(
+        chart =
+          rememberCartesianChart(
+            rememberColumnCartesianLayer(
+              ColumnCartesianLayer.ColumnProvider.series(columns, second)
+            ),
+            marker = rememberDefaultCartesianMarker(label = rememberTextComponent()),
+            markerVisibilityListener = markerListener,
+            decorations = listOf(recorder),
+          ),
+        modelProducer = producer,
+        modifier = Modifier.width(320.dp).testTag(TAG),
+        animationSpec = null,
+        initialAnimationSpec = null,
+      )
+    }
+    push {
+      columnSeries {
+        series(x = listOf(0, 1), y = listOf(5, 9))
+        series(x = listOf(0, 1), y = listOf(3, 7))
+      }
+    }
+    val column = second.verticals.distinctBy { it.x }[1]
+
+    composeRule.onNodeWithTag(TAG).performTouchInput {
+      down(Offset(column.x, (column.top + column.bottom) / 2))
+    }
+    composeRule.drawChart()
+
+    val target = markerListener.shown!!.single() as ColumnCartesianLayerMarkerTarget
+    assertEquals(1.0, target.x, 0.0)
+    assertEquals(column.x, target.canvasX, 1f)
+    assertEquals(1.0, recorder.last!!.markerX!!, 0.0)
   }
 
   private companion object {

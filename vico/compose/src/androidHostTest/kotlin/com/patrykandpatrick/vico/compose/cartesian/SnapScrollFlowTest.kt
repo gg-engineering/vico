@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.foundation.layout.width
@@ -126,7 +125,10 @@ class SnapScrollFlowTest {
             28.0
           },
           animation =
-            SnapBehaviorConfig.SnapAnimation(decayFrictionMultiplier = 0f, snapDurationMillis = 100),
+            SnapBehaviorConfig.SnapAnimation(
+              decayFrictionMultiplier = 0f,
+              snapDurationMillis = 100,
+            ),
         )
     )
 
@@ -135,7 +137,11 @@ class SnapScrollFlowTest {
     val (current, projected, isDrag) = snapCalls.single()
     assertEquals(false, isDrag)
     assertTrue("$projected > $current", (projected as Double) > (current as Double))
-    assertEquals(checkNotNull(scrollState.xToScrollValueBehindStartInset(28.0)), scrollState.value, 1f)
+    assertEquals(
+      checkNotNull(scrollState.xToScrollValueBehindStartInset(28.0)),
+      scrollState.value,
+      1f,
+    )
   }
 
   @Test

@@ -14,22 +14,21 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
-import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
 import com.patrykandpatrick.vico.compose.cartesian.data.lineSeries
 import com.patrykandpatrick.vico.compose.cartesian.layer.ColumnCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
@@ -149,6 +148,8 @@ class LayerGeometryFlowTest {
     assertTrue(visible.size in 2 until 400)
     assertTrue(visible.all { it.first >= frame.layerLeft - frame.xSpacing })
     assertTrue(visible.all { it.first <= frame.layerRight + frame.xSpacing })
+    val pointSpacingPx = with(composeRule.density) { (POINT_SPACING_DP + POINT_SIZE_DP).dp.toPx() }
+    assertEquals(pointSpacingPx * frame.zoom, frame.xSpacing, 0.5f)
   }
 
   @Test
@@ -217,6 +218,8 @@ class LayerGeometryFlowTest {
   }
 
   private companion object {
+    const val POINT_SPACING_DP = 24f
+    const val POINT_SIZE_DP = 8f
     const val WIDTH_DP = 320
     const val COLUMN_DP = 8f
   }

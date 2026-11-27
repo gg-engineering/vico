@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import android.graphics.Bitmap
@@ -23,8 +22,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
-import com.patrykandpatrick.vico.compose.cartesian.CartesianMeasuringContext
+import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
@@ -35,7 +33,6 @@ import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.Component
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
 import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
-import androidx.compose.ui.unit.dp
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.test.StandardTestDispatcher
 

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.foundation.layout.width
@@ -57,7 +56,11 @@ class ScrubMarkerFlowTest {
   private val calls = CopyOnWriteArrayList<Call>()
   private lateinit var scrollState: VicoScrollState
 
-  private data class Call(val clickX: Double?, val targets: List<Double>, val interaction: Interaction?)
+  private data class Call(
+    val clickX: Double?,
+    val targets: List<Double>,
+    val interaction: Interaction?,
+  )
 
   private fun setChart(
     initialMarkerX: () -> Double? = { null },

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.foundation.layout.width
@@ -23,13 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.columnSeries
 import com.patrykandpatrick.vico.compose.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberColumnCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -122,8 +121,10 @@ class DataToChartFlowTest {
     push { lineSeries { series(70.2, 70.4) } }
     awaitFrame { it.maxX == 1.0 }
 
-    val error =
-      runCatching { push { lineSeries { series(emptyList<Number>()) } } }.exceptionOrNull()
+    val error = runCatching {
+      push { lineSeries { series(emptyList<Number>()) } }
+    }
+      .exceptionOrNull()
     recorder.frames.clear()
     composeRule.drawChart()
 

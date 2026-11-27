@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.foundation.layout.width
@@ -154,7 +153,10 @@ class ScrollAwareRangeFlowTest {
   @Test
   fun `a window keyed for another chart is ignored`() {
     setChart(windowKey = KEY)
-    pushRisingWeights(ScrollAwareRangeProvider.Window(minX = -5.0, maxX = 70.0), windowKey = "other")
+    pushRisingWeights(
+      ScrollAwareRangeProvider.Window(minX = -5.0, maxX = 70.0),
+      windowKey = "other",
+    )
 
     val frame = settle()
 

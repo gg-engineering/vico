@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
@@ -29,6 +27,7 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProdu
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.common.Position
 import java.text.DecimalFormat
 import kotlinx.coroutines.runBlocking
@@ -45,7 +44,10 @@ class AxisFlowTest {
 
   private val producer = CartesianChartModelProducer()
   private val recorder = FrameRecorder()
-  private val yLabels = RecordingFormatter(CartesianValueFormatter { _, value, _ -> DecimalFormat("0.0").format(value) })
+  private val yLabels =
+    RecordingFormatter(
+      CartesianValueFormatter { _, value, _ -> DecimalFormat("0.0").format(value) }
+    )
   private val xLabels = RecordingFormatter()
   private val yGuideline = RecordingLineComponent(thicknessDp = 1f)
   private val xGuideline = RecordingLineComponent(thicknessDp = 1f)
@@ -156,12 +158,11 @@ class AxisFlowTest {
     val empty = CartesianValueFormatter { _, _, _ -> "" }
     setChart(CartesianLayerRangeProvider.auto(), step = null, xFormatter = empty)
 
-    val error =
-      runCatching {
-          runBlocking { producer.runTransaction { lineSeries { series(1, 2, 3) } } }
-          composeRule.awaitFrame(recorder)
-        }
-        .exceptionOrNull()
+    val error = runCatching {
+      runBlocking { producer.runTransaction { lineSeries { series(1, 2, 3) } } }
+      composeRule.awaitFrame(recorder)
+    }
+      .exceptionOrNull()
 
     assertTrue("$error", error is IllegalStateException)
     assertTrue("${error?.message}", error?.message.orEmpty().contains("blank string"))
@@ -244,12 +245,11 @@ class AxisFlowTest {
   fun `a zero label step is rejected`() {
     setChart(CartesianLayerRangeProvider.fixed(minY = 150.0, maxY = 190.0), step = 0.0)
 
-    val error =
-      runCatching {
-          runBlocking { producer.runTransaction { lineSeries { series(160, 170) } } }
-          composeRule.awaitFrame(recorder)
-        }
-        .exceptionOrNull()
+    val error = runCatching {
+      runBlocking { producer.runTransaction { lineSeries { series(160, 170) } } }
+      composeRule.awaitFrame(recorder)
+    }
+      .exceptionOrNull()
 
     assertTrue("$error", error is IllegalArgumentException)
   }

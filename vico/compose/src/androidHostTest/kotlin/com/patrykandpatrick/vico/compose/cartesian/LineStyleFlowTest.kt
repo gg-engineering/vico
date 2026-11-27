@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package com.patrykandpatrick.vico.compose.cartesian
 
 import android.graphics.Bitmap
@@ -45,14 +44,12 @@ import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLa
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.Insets
 import com.patrykandpatrick.vico.compose.common.LayeredComponent
-import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
 import com.patrykandpatrick.vico.compose.pie.PieChart
 import com.patrykandpatrick.vico.compose.pie.data.PieChartModel
 import com.patrykandpatrick.vico.compose.pie.rememberPieChart
 import com.patrykandpatrick.vico.compose.pie.renderToImageBitmap
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -130,8 +127,8 @@ class LineStyleFlowTest {
 
   private fun canvasY(value: Double): Float {
     val frame = recorder.last!!
-    return frame.layerBottom - ((value - MIN_Y) / (MAX_Y - MIN_Y)).toFloat() *
-      (frame.layerBottom - frame.layerTop)
+    return frame.layerBottom -
+      ((value - MIN_Y) / (MAX_Y - MIN_Y)).toFloat() * (frame.layerBottom - frame.layerTop)
   }
 
   @Test
@@ -210,7 +207,10 @@ class LineStyleFlowTest {
     val blues = bitmap.bluish().map { it.second - top }
 
     assertTrue(reds.isNotEmpty() && blues.isNotEmpty())
-    assertTrue("red ${reds.average()} above blue ${blues.average()}", reds.average() < blues.average())
+    assertTrue(
+      "red ${reds.average()} above blue ${blues.average()}",
+      reds.average() < blues.average(),
+    )
   }
 
   private fun Bitmap.reddish() = pixelsWhere { r, g, b -> r > 200 && g < 60 && b < 60 }
@@ -305,7 +305,13 @@ class LineStyleFlowTest {
     val chartBitmap =
       chart.renderToImageBitmap(model, 300, 200, createFontFamilyResolver(context), Density(1f))
     val pieBitmap =
-      pie.renderToImageBitmap(PieChartModel.build(1, 2), 200, 200, createFontFamilyResolver(context), Density(1f))
+      pie.renderToImageBitmap(
+        PieChartModel.build(1, 2),
+        200,
+        200,
+        createFontFamilyResolver(context),
+        Density(1f),
+      )
 
     val chartPixels = chartBitmap.toPixelMap()
     assertTrue((0 until 300).any { x -> (0 until 200).any { y -> chartPixels[x, y] == LINE } })
