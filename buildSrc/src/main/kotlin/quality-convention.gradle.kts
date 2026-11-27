@@ -16,4 +16,9 @@
 
 plugins { id("org.jetbrains.kotlinx.kover") }
 
-kover { reports { filters { excludes { classes("*ComposableSingletons*") } } } }
+kover {
+  reports {
+    filters { excludes { classes("*ComposableSingletons*") } }
+    variant("android") { verify { rule { minBound(80) } } }
+  }
+}

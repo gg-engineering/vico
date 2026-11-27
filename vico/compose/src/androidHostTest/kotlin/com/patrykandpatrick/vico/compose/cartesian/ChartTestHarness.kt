@@ -53,12 +53,19 @@ private const val TIMEOUT_MS = 10_000L
 
 /** Robolectric does not run draw passes on its own, so the window is drawn into a bitmap. */
 internal fun ChartRule.drawChart() {
+  captureWindow()
+}
+
+internal fun ChartRule.captureWindow(): Bitmap {
   waitForIdle()
+  lateinit var bitmap: Bitmap
   runOnUiThread {
     val view = activity.window.decorView
-    view.draw(Canvas(Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)))
+    bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+    view.draw(Canvas(bitmap))
   }
   waitForIdle()
+  return bitmap
 }
 
 internal fun ChartRule.awaitFrame(
