@@ -14,7 +14,8 @@ useDefault = true
 [[rules]]
 id = "aws-access-key"
 description = "AWS Access Key"
-regex = '''(?i)(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
+# Case-sensitive: AWS key ids are upper case, and (?i) matched ordinary CamelCase identifiers.
+regex = '''(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'''
 tags = ["aws", "key"]
 
 [[rules]]
@@ -34,6 +35,11 @@ id = "generic-secret"
 description = "Generic Secret"
 regex = '''(?i)(secret|password|passwd|pwd|token|auth[_-]?token|access[_-]?token|bearer)[\s:=]+['\"][^'\"]{8,}['\"]'''
 tags = ["secret"]
+
+  [[rules.allowlists]]
+  description = "A GitHub Actions expression names a secret, it does not contain one"
+  regexTarget = "line"
+  regexes = ['''\$\{\{[^}]*\}\}''']
 
 [[rules]]
 id = "private-key"
